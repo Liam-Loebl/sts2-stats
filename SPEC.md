@@ -1,0 +1,337 @@
+# Slay the Spire 2 — Personal Run Analytics App
+
+## Spec / Build Brief (v2)
+
+This document is the starting point for building the app. It is written so a developer (or
+coding agent) with **no prior context** can pick it up. Read it fully before coding. v2 adds
+a game-background section and confirmed data values pulled from real run files.
+
+---
+
+## 1. What we're building & why
+
+A desktop app that ingests **my own Slay the Spire 2 (StS2) run history** and computes
+performance analytics — most importantly, **per-card value metrics**. Inspired by streamer
+**Jorbs**, who logs every run into a self-updating spreadsheet of per-card win rates and more.
+His isn't public; this is my own version.
+
+Goal is exploratory: *stats to look at and get ideas from*, since the game and my strategy keep
+evolving. It is also a portfolio/learning project, so **the reasoning behind the metrics matters
+as much as a working result** — do not silently "simplify" the statistics below; they were
+chosen deliberately.
+
+Scope: **only my own single-player runs.** Two machines (laptop + desktop) — see §8.
+
+---
+
+## 2. Game background (so the metrics make sense)
+
+StS2 is a roguelike deckbuilder, in **Early Access since March 2026** (so expect frequent
+balance patches — cards get reworked often; this is why the per-card "reset on rebalance"
+feature in §4 matters). Core loop: pick a character, climb through 3 acts, build a deck by
+picking 1 card from a choice of options after most fights, fighting toward a boss each act.
+
+- **Characters (5 in EA, all played by the user):**
+  | ID | Name | Identity (for understanding card archetypes) |
+  |---|---|---|
+  | `CHARACTER.IRONCLAD` | The Ironclad | High HP (80), strength/exhaust, heals after combat (Burning Blood) |
+  | `CHARACTER.SILENT` | The Silent | Low HP (70), poison / shivs / discard, draws extra (Ring of the Snake) |
+  | `CHARACTER.DEFECT` | The Defect | Orbs (lightning/frost/etc.) |
+  | `CHARACTER.REGENT` | The Regent | "Stars" resource (banked energy, max 24) — NEW |
+  | `CHARACTER.NECROBINDER` | The Necrobinder | Summons a skeletal hand "Osty" companion — NEW |
+  - **Ascension is tracked independently per character.** More characters/modes are on the EA roadmap, so **never hardcode the roster** — read it from the data.
+- **Acts:** 3 acts per run **in current Early Access**. StS2 has a planned **"Alternate Acts"**
+  system, but **only Act 1 currently has a biome choice** (Overgrowth *or* Underdocks); **Acts 2
+  and 3 each have a single biome for now** (alternates still in development). An **Act 4 / true
+  ending / heart-style fight does NOT exist now but may be added later** — so **DO NOT hardcode "3
+  acts"** anywhere; derive the act count from `map_point_history.length`. The **act NUMBER is the
+  position (1/2/3/...)** = the outer index of `map_point_history`; the **biome name** (in `acts`,
+  e.g. `ACT.UNDERDOCKS`, `ACT.HIVE`, `ACT.GLORY`) currently only varies for Act 1 but treat it as a
+  general dimension since Acts 2/3 will gain variants. Each act is ~17 floors, **starts with an
+  "Ancient"** (choose 1 of 3 boons/relics) and **ends with a boss**. ~45–50 encounters per full run.
+- **Map location types** (`map_point_type`): `monster`, `elite`, `boss`, `rest_site`,
+  `shop`, `treasure`, `ancient`, `unknown` (event).
+- **Card rewards:** after most combats you choose **1 of ~3 cards or Skip** (shops offer more).
+  This pick/skip choice is the heart of the WAR and Elo metrics.
+- **Ascension (difficulty):** stacking modifiers, **1–10 in Early Access** (cumulative; per
+  character). May rise toward 20 at 1.0 — so treat ascension as an adjustable numeric threshold,
+  **don't hardcode a max.**
+- **Co-op:** up to 4 players. **Multiplayer runs exist in the user's history and must be excluded**
+  (see §3) — this is confirmed, not hypothetical.
+- Cards can be **upgraded** (`current_upgrade_level`) and **enchanted** (`ENCHANTMENT.*`, a new
+  StS2 mechanic). For v1, **aggregate by base card id**; the detail is preserved for later.
+
+---
+
+## 3. Data source (CONFIRMED — this is the foundation)
+
+StS2 is a **Godot / C#** game. It writes **one plain-JSON file per run**, **unencrypted**.
+
+**Location (Windows):**
+```
+%APPDATA%\SlayTheSpire2\steam\<steamid>\profile1\saves\history\<unix_start_time>.run
+```
+- Example on current machine:
+  `C:\Users\loebl\AppData\Roaming\SlayTheSpire2\steam\76561199082202541\profile1\saves\history\`
+- Filename = run's unix start time, e.g. `1779397791.run`.
+- **Auto-detect** by globbing `%APPDATA%\SlayTheSpire2\steam\*\profile*\saves\history`.
+  **Never hardcode** the username (`loebl`) or steamid — they differ per machine.
+- **Ignore** `*.run.backup` (dupes — ~75 of them), `current_run.*.corrupt` (in-progress), `profile1/replays/*.mcr` (binary).
+- **150 valid `.run` files** as of 2026-06-21 (97 solo + 53 co-op). Earlier count of "~137" was stale.
+
+### Run JSON schema (schema_version 9, build `v0.105.1`)
+
+Parser must tolerate schema/version changes across patches. Top-level fields:
+- `win` (bool); `was_abandoned` (bool, = player quit, not a real loss).
+- `ascension` (int); `build_id` (string, e.g. `"v0.105.1"` — used for per-card rebalance resets).
+- `game_mode` (string) — **confirmed values: `"standard"` (almost all runs) and `"custom"`.** Filter to Standard.
+- `seed` (string); `start_time` (unix int — the run's unique id); `run_time` (seconds).
+- `acts` (array of biome names reached); `killed_by_encounter`; `killed_by_event`; `modifiers`;
+  `platform_type`; `schema_version`.
+- `players` (array). **Length > 1 ⇒ multiplayer (co-op)** ⇒ store with `is_multiplayer` flag (default-filtered, toggleable — see §4). Each player has: **`id` (int64, the player's 17-digit Steam ID)**, `character` (one of the 5 IDs above), final `deck` (cards: `id`, `current_upgrade_level?`, `enchantment?`, `floor_added_to_deck`), `relics`, `potions`, `max_potion_slot_count`. (`badges` is documented but empty/absent in co-op runs observed.)
+- **LOCAL USER IDENTIFICATION (resolved):** Parse the local Steam ID once from the save-folder path
+  (e.g. `.../steam/76561199082202541/profile1/...` → `76561199082202541`). In any run (solo or co-op),
+  the local user is `players[i]` where `str(players[i].id) == local_steam_id`. **Fallback:** `players[0]` —
+  100% of co-op runs in this dataset have the local user at index 0 (save-writing client writes itself first).
+  **Important:** `player_stats` arrays inside each map point are **index-aligned with `players[]`**, so once you
+  resolve the local user's index `i`, use `player_stats[i]` for that user's per-room stats.
+- `map_point_history`: **array of acts → array of map points (rooms)**. Outer index = act number.
+  Each map point: `map_point_type`, `rooms` (`model_id`, `monster_ids`, `room_type`, `turns_taken`),
+  and `player_stats[]` (one entry per player, **index-aligned with `players[]`**).
+- **Confirmed enum values (full enumeration across 150 files):**
+  - `map_point_type` (8): `monster`, `elite`, `boss`, `rest_site`, `shop`, `treasure`, `ancient`, `unknown` (= event rooms).
+  - `room_type` (7): `monster`, `elite`, `boss`, `rest_site`, `shop`, `treasure`, `event`. (Note: a `map_point_type:"ancient"` map point's room has `room_type:"event"`, e.g. `EVENT.NEOW`.)
+  - 20 distinct `ENCHANTMENT.*` IDs (Adroit, Clone, Corrupted, Glam, Goopy, Imbued, Instinct, Momentum, Nimble, Perfect_Fit, Royally_Approved, Sharp, Slither, Souls_Power, Sown, Spiral, Steady, Swift, Tezcataras_Ember, Vigorous).
+  - **Reward sources** (map_point_types where `card_choices` appear): `monster`, `elite`, `boss`, `shop`, `ancient`, `unknown` (event). Treasure rooms and rest sites do NOT yield card rewards.
+  - **Skippable card rewards** (where Elo's Skip entity applies): combat — `monster` / `elite` / `boss` card rewards (pick rates 62–88%). **Non-skippable:** `ancient_choice` (100% picked), `event_choices` (100%), `rest_site_choices` (100%), treasure `relic_choices` (100%). **Shops are skippable but gold-constrained** (~17.6% card-buy rate, ~41.8% relic-buy) — down-weight or exclude from Elo as planned.
+  - `schema_version` values present: **8 (57 runs) and 9 (93 runs)** — parser must handle both. Older v8 may lack some fields; use defensive `.get()` with defaults.
+- **Floor numbering (resolved — CUMULATIVE across acts):** there is NO explicit `floor` field on rooms or map points; the **only** floor-bearing JSON key anywhere is `floor_added_to_deck` (on card and relic objects).
+  - Derivation: for `map_point_history[A][M]` (both 0-indexed), `floor = sum(len(map_point_history[k]) for k in 0..A-1) + M + 1`. Equivalently, walk in order and number 1,2,3,…
+  - **Shortcut for card picks:** the picked card's own `floor_added_to_deck` already equals this number — just read it directly. Same for `cards_gained`, `bought_relics`, `cards_removed`, and the final `players[].relics`/`deck` lists.
+  - Acts vary in length per run (typically 17 / 16 / 15 = 48 floors total, but **don't hardcode** — always use array length).
+  - Highest floor seen in this dataset: **47**.
+- **`modifiers` field:** universally empty (`[]`) in all 150 runs, including the single `"custom"` run. We have **no schema example of a populated modifiers entry** — keep this as a known gap; parser should accept any array shape defensively.
+
+`player_stats` (per room) key fields:
+- **`card_choices`**: `[{ card: { id, current_upgrade_level?, props? }, was_picked: bool }]`
+  — the pick/skip data: every option offered + which was taken.
+- `relic_choices`: `[{ choice, was_picked }]`; `potion_choices`: `[{ choice, was_picked }]`.
+- `cards_gained`, `cards_removed`, `cards_transformed`, `cards_enchanted`, `upgraded_cards`,
+  `bought_relics`, `rest_site_choices` (e.g. `SMITH`/`HEAL`), `ancient_choice`, `event_choices`.
+- **`damage_taken`** (int per room → sum per act / character); `current_hp`, `max_hp`,
+  `current_gold`, gold_* fields, `hp_healed`.
+
+IDs: cards `CARD.*`, relics `RELIC.*`, potions `POTION.*`, characters `CHARACTER.*`,
+enchantments `ENCHANTMENT.*`.
+
+---
+
+## 4. Filters ("what counts as a run")
+
+Every stat passes through these. Defaults below; **all adjustable in the UI.**
+**Filter at query time — never delete runs** (reversible; lets us compare later).
+
+| Filter | Default | Notes |
+|---|---|---|
+| Multiplayer (co-op) | **default = solo only**, with toggle | **Store all runs**; mark each with `is_multiplayer` + `num_players`. UI toggle: Solo only / Co-op only / Both (e.g. compare A10 solo vs A10 co-op). WAR & Elo computed *separately per mode* (co-op baselines ≠ solo baselines — different game). Detect via `players` length > 1. **Local user identification (resolved):** `players[i]` where `str(players[i].id) == local_steam_id` (Steam ID parsed from save-folder path). Fallback: `players[0]` (100% reliable in current dataset). Co-op runs = 53 of 150 (35% — meaningful slice, not edge case). |
+| `game_mode` | **Standard only** | exclude `"custom"` (and any future seeded/daily modes) |
+| Abandoned (`was_abandoned`) | **excluded** (toggle) | quit ≠ loss; allow including via toggle |
+| Ascension | show all, adjustable threshold (e.g. "≥ N") | user raises it as they climb; EA max is 10, may rise — don't hardcode |
+| Card version window | per-card, default = all | when a card is reworked, count its stats only from that `build_id`/date forward. Maintain a hand-edited "balance changepoints" config (card → valid-from version). **Do NOT auto-detect card text changes.** |
+
+---
+
+## 5. Metrics
+
+Conventions for **all** metrics:
+- **Always display sample size (N)** next to every rate. Non-negotiable.
+- **Shrinkage** for small samples: pull low-N rates toward the relevant baseline (empirical Bayes /
+  simple shrinkage) so a "3-for-3" card doesn't show a fake 100%. Gray out / de-emphasize very low N.
+- Sliceable **per character** and, where noted, **per act**.
+
+> Context: only ~137 runs (~25–30 per character, fewer after filtering to high ascension). Per-card
+> *win-rate* numbers will be noisy for a while — show N honestly and shrink. Per-card *Elo* (§5.4) is
+> far more stable because it's per reward-event, not per run.
+
+### 5.1 Pick rate
+`picks / times_offered`. Captures niche cards (rarely offered, always taken).
+
+### 5.2 Win rate when picked
+Win rate of runs where the card was picked at least once. Intuitive but confounded — always with N.
+
+### 5.3 WAR (Wins Above Replacement) — **outcome metric**
+
+> **WAR(card) is computed at the per-(card, floor) level**, then aggregated for display.
+> For each pick of card C on floor F by character X, the "expected win" contribution is
+> the user's win rate among runs of character X that reached floor F (the
+> **character-conditional, floor-conditional baseline**).
+>
+> **WAR(C) = (W − E) / N**, where
+> - **W** = total wins across runs where C was picked,
+> - **E** = Σ over picks of the (character × floor) baseline win rate at the floor where C was picked,
+> - **N** = total picks of C.
+>
+> Equivalently, this is the pick-weighted average of per-floor lifts (win-rate-when-picked-on-F
+> minus the floor baseline). Baseline is **character-conditional** (Defect cards compared to
+> Defect floor-baselines, not global).
+
+It is **NOT** the global win rate, and it is **NOT** a pick-vs-skip differential.
+
+**Displayed aggregations** (this is what the UI shows):
+- **Overall WAR** — all floors combined (the primary headline number per card).
+- **Per-act WAR** — Act 1 / Act 2 / Act 3, each computed by restricting the W/E/N sums to picks on
+  floors belonging to that act.
+- Per-floor numbers themselves are NOT displayed as primary stats — they're the *mechanism*. (Per-card
+  per-floor breakdowns can be a stretch view, but with appropriate noise warnings.)
+
+**Why floor-level conditioning:** a card only offered late only appears in runs that *survived* to
+that floor — reaching later floors already correlates with winning. Conditioning at the floor level
+directly neutralizes that survivorship bias at the decision point itself. (Per-act conditioning
+would be a cruder approximation; per-floor is the rigorous choice the user explicitly asked for.)
+
+**Reliability note:** per-(card × floor) cells will often have N = 0 or 1 — that's fine, because we
+don't display them. The aggregate's reliability depends on the card's **total pick count N**, not the
+per-floor N. A card picked 20 times across 15 floors still has N = 20 for its WAR. Apply
+**shrinkage at the aggregate level** (low-N cards pull toward 0 WAR) and always show N.
+
+The data model already supports this — `floor` is stored on every card event (see §6).
+
+### 5.4 Elo — **preference / revealed-value metric** (complements WAR)
+
+Each card reward is a mini-tournament: the picked option "beats" the passed-over options. **Skip is
+a rated entity too.** Standard Elo: `update = K × (result − expected)`, `expected` from the rating gap
+→ beating a higher-rated option gains more; being passed over for a strong option loses little.
+
+**Multi-option handling (important — the user explicitly raised this):** rewards have 4+ options
+(3 cards + skip; shops more), so most options lose each reward. Handle via **multi-way pairwise**:
+the picked option plays a separate match against **each** other option and the updates are **summed**:
+- A pick = beating all N−1 alternatives → large up-move; a pass = one loss → small down-move.
+- This makes **"winning bigger than losing" structurally**, scaled to option count (a 7-card shop
+  pick beats 6), while staying **zero-sum / non-inflating** and keeping ratings interpretable.
+- **Do NOT** implement the asymmetry as `K_win > K_loss` as the core mechanism (inflates ratings,
+  breaks interpretability). Leave only as an optional tuning knob.
+
+Other Elo decisions:
+- **Per-character pools** (cards are character-specific); optionally **per-act** Elo.
+- Model a **per-character Skip rating** → cards above it are "worth taking," below it "usually pass."
+- **Chronological Elo first** (process oldest→newest, like Jorbs) → enables an **Elo-over-time** trend.
+  A **Bradley-Terry** batch model (order-independent, statistically cleaner) is a later refinement.
+- **K-factor** tunable.
+- **Shops are a noisy Elo signal** (passing a card may be gold-constrained, not preference) —
+  down-weight or exclude shop card rewards from Elo initially; combat/elite/boss rewards are clean.
+
+### 5.5 The headline insight: WAR vs Elo
+WAR = what actually *wins*; Elo = what I *prefer*. The gap is the gold:
+- High Elo + low WAR ⇒ **overrated** (I keep taking it; it doesn't win).
+- Low Elo + high WAR ⇒ **underrated** (wins when taken; I usually pass).
+Surface explicitly (an Elo-vs-WAR view / scatter).
+
+### 5.6 Aggregate stats
+- Overall + per-character win rate; win rate by ascension and over time.
+- **Damage taken per act and per character** (sum `damage_taken` over an act's rooms).
+- Floors/acts reached; where I die most (`killed_by_encounter`).
+
+### 5.7 Relics & potions
+Reuse the same machinery. **Relics** fit pick/skip + WAR + Elo directly (boss/shop/chest/ancient
+choices). **Potions** are more about usage than acquisition → mostly descriptive. After cards (later phase).
+
+---
+
+## 6. Architecture
+
+```
+.run files  →  Parser  →  SQLite DB  →  Dashboard (local web app, opens in browser)
+   ↑                                          ↑
+   └──────  Watcher (fires on new run)  ───────┘
+```
+
+- **Parser**: read each `.run`, apply filters, flatten into tables.
+  - Must handle **`schema_version` 8 and 9** (both present in current data) using defensive `.get()` with defaults; quarantine truly unparseable runs to a log rather than failing the whole import.
+  - **Resolve the local user index** once per file: `i` such that `str(players[i].id) == local_steam_id` (fallback `players[0]`). All per-user stats use `player_stats[i]` (index-aligned with `players[]`).
+  - **Floor on every event:** walk `map_point_history` and assign cumulative floor 1, 2, 3, … to each map point. For card picks, the picked card's `floor_added_to_deck` already equals this value — read directly.
+- **SQLite** (one local file). Suggested tables:
+  - `runs` (run_id [= start_time], character, ascension, build_id, game_mode, win, abandoned,
+    **is_multiplayer**, **num_players**, run_time, acts_reached, killed_by, …). For co-op runs,
+    `character` = the local user's character (identification mechanism TBD via data recon).
+  - `card_events` (run_id, act_index, floor, **reward_event_id**, source_type [monster/elite/boss/
+    shop/…], card_id, was_picked) — one row per option per reward.
+  - **`reward_event_id` (or the tuple run_id + act + floor/map-index) must group all options of a
+    single reward** so Elo can reconstruct each choice set. Skip = a reward group with no
+    `was_picked = true`.
+  - analogous tables for relics & potions later.
+- **Idempotent import**, keyed on `start_time`/`seed` — re-scanning never duplicates. DB is
+  **disposable / fully rebuildable** from the `.run` files.
+- **Watcher**: background process (e.g. Python `watchdog`) on the history folder; on a new `.run`,
+  parse + upsert → "updates after every run."
+- **Dashboard**: local web app opened in the browser.
+
+**Stack:** Python + SQLite (stdlib) + dashboard framework + file watcher. Recommended start:
+**Streamlit** (least code, good charts via Plotly, opens like an app) for ship-fast. Builder is a
+newer programmer with some Python, building via a coding agent.
+
+---
+
+## 7. UI / screens
+
+Priority order (build top-down):
+1. **Overview dashboard** — total runs, overall win rate, **5 character tiles** (win rate + run count;
+   names pulled live from data), win-rate-over-time, damage-per-act.
+2. **Card rankings board** — sortable table of all cards: **pick% · win% · WAR · Elo · N**. Filter by
+   character / act. Green→red WAR coloring. Low-N rows grayed. Click → deep dive.
+3. **Deep dives** —
+   - per-card: act splits, WAR by act, **Elo-over-time**, **Elo-vs-WAR**, pick/win rates.
+   - per-character: win rate, damage curves per act, that character's best/worst cards.
+
+Parked for later: a **run-by-run timeline browser** (replay a run's picks/skips/deck/map as data).
+
+**Aesthetic:** lean **thematic** (StS2-flavored: dark, gritty), but **refine the look after** there's
+a working build to react to. Start functional + themeable; escalate to a more custom UI only if desired.
+
+Stretch / "wow" (not committed): actual StS2 **card art** on tiles (assets in packed Godot files —
+extraction effort unknown); pick-rate-vs-win-rate scatter.
+
+---
+
+## 8. Multi-machine
+
+User plays on **both a laptop and a desktop**. **Steam Cloud syncs the `.run` files to both**, so each
+has the full history locally.
+- **Auto-detect** the save path (glob); never hardcode user/steamid.
+- **Idempotent import** keyed on run id → each machine builds its own local DB from its synced files;
+  both DBs converge to identical stats.
+- DB is local + rebuildable per machine. **Do NOT** sync the SQLite DB itself via OneDrive/Dropbox
+  (cloud-sync can corrupt a live DB).
+- **Freshness caveat:** runs from the *other* machine appear only after Steam Cloud syncs them down
+  (on next StS2 launch there). The watcher catches *local* runs instantly.
+
+---
+
+## 9. Build order (each phase usable on its own)
+
+1. **Foundation** — parser + SQLite schema (incl. `reward_event_id` grouping) + import all 137 runs.
+   Then **sanity-check together**: total runs, win rate, runs per character, multiplayer/custom counts.
+2. **Overview dashboard** — first thing to open and react to.
+3. **Card rankings board** — pick%, win%, WAR, Elo (sortable; N shown; shrinkage; coloring).
+4. **Deep dives** — per-card & per-character.
+5. **Auto-update watcher.**
+6. **Relics / potions + polish + stretch features.**
+
+---
+
+## 10. Non-negotiable principles (don't let these get lost)
+
+- **Run files are the single source of truth.** DB is derived & rebuildable; nothing deleted; filters
+  applied at query time.
+- **Show N everywhere** and **shrink low samples.** Never present a raw small-sample rate as fact.
+- **WAR baseline is character + FLOOR conditional**, aggregated to overall and per-act for display.
+  Not global, not pick-vs-skip, not act-only. This controls for survivorship bias at the decision
+  point — the whole point.
+- **Elo is multi-way pairwise (pick beats all alternatives incl. skip), summed, zero-sum.** Don't fake
+  the win/loss asymmetry with K-factors.
+- **Auto-detect paths; idempotent import; portable across both machines.**
+- **Never hardcode the roster, ascension max, number of acts, or schema** — read from data; tolerate patch changes. (Act 4 / Heart may be added; new characters are on the roadmap.)
+- **Co-op runs are stored, not discarded.** Default filter is solo only; toggle in UI for co-op-only or both. Compute metric baselines per mode separately.
+- **Card display names**: prettify IDs (`CARD.HELIX_DRILL` → "Helix Drill") with a hand-maintained JSON overrides file for cases where the auto-result is ugly. Same approach for relics/potions/characters.
+- **Card-rebalance "valid-from" list**: a hand-edited YAML file in the project. One block per affected card mapping it to a minimum `build_id`. Cards not listed use all data.
+- **Version control from day one**: Git + GitHub. `.gitignore` excludes raw `.run` files, the SQLite DB, and any local config holding personal data.
+- This is a learning + portfolio project — **preserve the statistical intent**; don't dumb metrics down.

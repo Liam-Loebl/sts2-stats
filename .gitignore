@@ -1,0 +1,42 @@
+# StS2 personal data — NEVER commit raw run files or derived databases.
+# The app rebuilds the DB from Steam-synced .run files on each machine.
+*.run
+*.run.backup
+*.sqlite
+*.sqlite-journal
+*.db
+data/
+runs_cache/
+
+# Local machine-specific config (kept separate from the project's settings.json)
+.claude/settings.local.json
+
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.venv/
+venv/
+env/
+.env
+*.egg-info/
+dist/
+build/
+.pytest_cache/
+
+# Logs
+*.log
+logs/
+import_errors.txt
+
+# IDE / OS
+.vscode/
+.idea/
+.DS_Store
+Thumbs.db
+desktop.ini
+
+# Temp
+*.tmp
+.temp/
