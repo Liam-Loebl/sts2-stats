@@ -24,17 +24,35 @@ import altair as alt
 # Palette — the single source of truth. No brown anywhere.
 # ---------------------------------------------------------------------------
 
-PALETTE = {
-    "background":     "#0B0D10",
-    "surface":        "#13161B",
-    "border":         "#1F242C",
-    "text_primary":   "#E6E8EB",
-    "text_secondary": "#8A929E",
-    "accent":         "#7C5CFF",
-    "accent_muted":   "#7C5CFF26",
-    "positive":       "#3FB950",
-    "negative":       "#F85149",
+PALETTES = {
+    "dark": {
+        "background":     "#0B0D10",
+        "surface":        "#13161B",
+        "border":         "#1F242C",
+        "text_primary":   "#E6E8EB",
+        "text_secondary": "#8A929E",
+        "accent":         "#7C5CFF",  # purple, identical in both modes
+        "accent_muted":   "#7C5CFF26",
+        "positive":       "#3FB950",
+        "negative":       "#F85149",
+    },
+    "light": {
+        "background":     "#FFFFFF",  # flipped from near-black
+        "surface":        "#F5F5F7",  # subtle lift off white
+        "border":         "#E5E7EB",
+        "text_primary":   "#11151B",  # flipped from near-white
+        "text_secondary": "#6B7280",
+        "accent":         "#7C5CFF",  # same purple
+        "accent_muted":   "#7C5CFF1F",
+        "positive":       "#15803D",  # darker for contrast on white
+        "negative":       "#B91C1C",
+    },
 }
+
+# Backwards-compat alias — same value the module exported before the
+# light-mode refactor. New code should call `get_css(palette)` and read
+# from PALETTES[mode] directly.
+PALETTE = PALETTES["dark"]
 
 # Character colors — positional, pairs with the CHARACTERS list in app.py
 # (IRONCLAD, SILENT, NECROBINDER, REGENT, DEFECT) via domain=char_order on
@@ -66,7 +84,16 @@ FONT_FAMILY = "Inter, 'IBM Plex Sans', -apple-system, BlinkMacSystemFont, 'Segoe
 # CSS — chrome hiding, Inter, padding, sidebar surface
 # ---------------------------------------------------------------------------
 
-CSS = f"""
+def get_css(palette: dict) -> str:
+    """Render the full CSS block for the given palette (PALETTES['dark'] or PALETTES['light']).
+
+    Inject the return value once at the top of app.py via
+    `st.markdown(get_css(palette), unsafe_allow_html=True)`. The CSS hides
+    Streamlit chrome, loads Inter, paints the surface / border / text from
+    the palette, and adds rules for the metric cards, character tiles
+    (including the top stripe via `--char-color`), and chart headers.
+    """
+    return f"""
 <style>
 @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap');
 
@@ -91,19 +118,19 @@ header[data-testid="stHeader"] {{ display: none; }}
 
 /* Sidebar surface */
 section[data-testid="stSidebar"] {{
-    background: {PALETTE['background']};
-    border-right: 1px solid {PALETTE['border']};
+    background: {palette['background']};
+    border-right: 1px solid {palette['border']};
 }}
 section[data-testid="stSidebar"] .block-container {{
     padding-top: 2rem;
 }}
 section[data-testid="stSidebar"] hr {{
     border: 0;
-    border-top: 1px solid {PALETTE['border']};
+    border-top: 1px solid {palette['border']};
     margin: 1rem 0;
 }}
 section[data-testid="stSidebar"] label {{
-    color: {PALETTE['text_secondary']} !important;
+    color: {palette['text_secondary']} !important;
     font-size: 12px !important;
     font-weight: 500 !important;
     letter-spacing: 0.02em;
@@ -114,18 +141,18 @@ h1, .stMarkdown h1 {{
     font-size: 22px !important;
     font-weight: 600 !important;
     letter-spacing: -0.01em;
-    color: {PALETTE['text_primary']};
+    color: {palette['text_primary']};
     margin: 0 0 0.25rem 0;
 }}
 h2, .stMarkdown h2 {{
     font-size: 14px !important;
     font-weight: 600 !important;
-    color: {PALETTE['text_primary']};
+    color: {palette['text_primary']};
 }}
 h3, .stMarkdown h3 {{
     font-size: 13px !important;
     font-weight: 600 !important;
-    color: {PALETTE['text_primary']};
+    color: {palette['text_primary']};
 }}
 
 /* Section eyebrow (small uppercase tracked label between rows) */
@@ -134,14 +161,14 @@ h3, .stMarkdown h3 {{
     font-weight: 600;
     letter-spacing: 0.08em;
     text-transform: uppercase;
-    color: {PALETTE['text_secondary']};
+    color: {palette['text_secondary']};
     margin: 2rem 0 0.75rem 0;
 }}
 
 /* Metric card — hand-rolled, replaces st.metric */
 .metric-card {{
-    background: {PALETTE['surface']};
-    border: 1px solid {PALETTE['border']};
+    background: {palette['surface']};
+    border: 1px solid {palette['border']};
     border-radius: 16px;
     padding: 20px;
     height: 100%;
@@ -157,21 +184,32 @@ h3, .stMarkdown h3 {{
     justify-content: center;
 }}
 .metric-card.is-selected {{
-    border-color: {PALETTE['accent']};
+    border-color: {palette['accent']};
+}}
+
+/* Character tile — top stripe in the character's color (passed via the
+   --char-color CSS variable on the tile div). Name eyebrow also picks
+   up the color so the tile reads as "this character" at a glance. */
+.metric-card.character-tile {{
+    border-top: 3px solid var(--char-color);
+    padding-top: 17px;  /* compensate for the stripe height */
+}}
+.metric-card.character-tile .metric-label {{
+    color: var(--char-color);
 }}
 .metric-label {{
     font-size: 11px;
     font-weight: 500;
     letter-spacing: 0.06em;
     text-transform: uppercase;
-    color: {PALETTE['text_secondary']};
+    color: {palette['text_secondary']};
     margin: 0 0 10px 0;
 }}
 .metric-value {{
     font-size: 32px;
     font-weight: 600;
     line-height: 1.1;
-    color: {PALETTE['text_primary']};
+    color: {palette['text_primary']};
     font-variant-numeric: tabular-nums;
     margin: 0;
 }}
@@ -179,28 +217,28 @@ h3, .stMarkdown h3 {{
     font-size: 48px;
 }}
 .metric-value.is-accent {{
-    color: {PALETTE['accent']};
+    color: {palette['accent']};
 }}
 .metric-delta {{
     font-size: 12px;
     font-weight: 500;
-    color: {PALETTE['text_secondary']};
+    color: {palette['text_secondary']};
     margin-top: 8px;
     font-variant-numeric: tabular-nums;
 }}
-.metric-delta.is-positive {{ color: {PALETTE['positive']}; }}
-.metric-delta.is-negative {{ color: {PALETTE['negative']}; }}
+.metric-delta.is-positive {{ color: {palette['positive']}; }}
+.metric-delta.is-negative {{ color: {palette['negative']}; }}
 
 /* Sub-rows inside character tiles */
 .tile-subrow {{
     display: flex;
     justify-content: space-between;
     font-size: 12px;
-    color: {PALETTE['text_secondary']};
+    color: {palette['text_secondary']};
     font-variant-numeric: tabular-nums;
     margin-top: 4px;
 }}
-.tile-subrow .v {{ color: {PALETTE['text_primary']}; font-weight: 500; }}
+.tile-subrow .v {{ color: {palette['text_primary']}; font-weight: 500; }}
 
 /* Page header strip — title left, last-sync right */
 .page-header {{
@@ -211,7 +249,7 @@ h3, .stMarkdown h3 {{
     padding-bottom: 0;
 }}
 .page-header .last-sync {{
-    color: {PALETTE['text_secondary']};
+    color: {palette['text_secondary']};
     font-size: 12px;
     font-variant-numeric: tabular-nums;
 }}
@@ -222,12 +260,12 @@ h3, .stMarkdown h3 {{
 .chart-title {{
     font-size: 13px;
     font-weight: 600;
-    color: {PALETTE['text_primary']};
+    color: {palette['text_primary']};
     margin: 0.25rem 0 4px 0;
 }}
 .chart-sub {{
     font-size: 11px;
-    color: {PALETTE['text_secondary']};
+    color: {palette['text_secondary']};
     margin: 0 0 12px 0;
 }}
 
@@ -235,38 +273,38 @@ h3, .stMarkdown h3 {{
 .app-footer {{
     margin-top: 3rem;
     padding-top: 1rem;
-    border-top: 1px solid {PALETTE['border']};
-    color: {PALETTE['text_secondary']};
+    border-top: 1px solid {palette['border']};
+    color: {palette['text_secondary']};
     font-size: 12px;
 }}
 
 /* Empty-state pill */
 .empty-state {{
-    background: {PALETTE['surface']};
-    border: 1px solid {PALETTE['border']};
+    background: {palette['surface']};
+    border: 1px solid {palette['border']};
     border-radius: 12px;
     padding: 16px 20px;
-    color: {PALETTE['text_secondary']};
+    color: {palette['text_secondary']};
     font-size: 13px;
 }}
 
 /* Streamlit widget polish: remove the "running" spinner halo color */
 .stSpinner > div > div {{
-    border-top-color: {PALETTE['accent']} !important;
+    border-top-color: {palette['accent']} !important;
 }}
 
 /* Button polish — keep accent for primary actions only */
 .stButton > button {{
-    background: {PALETTE['surface']};
-    color: {PALETTE['text_primary']};
-    border: 1px solid {PALETTE['border']};
+    background: {palette['surface']};
+    color: {palette['text_primary']};
+    border: 1px solid {palette['border']};
     border-radius: 8px;
     font-size: 13px;
     font-weight: 500;
 }}
 .stButton > button:hover {{
-    border-color: {PALETTE['accent']};
-    color: {PALETTE['text_primary']};
+    border-color: {palette['accent']};
+    color: {palette['text_primary']};
 }}
 </style>
 """
@@ -276,9 +314,8 @@ h3, .stMarkdown h3 {{
 # Altair theme
 # ---------------------------------------------------------------------------
 
-def _sts2_altair_theme() -> dict:
-    """Custom Altair theme matching the palette."""
-    p = PALETTE
+def _altair_config(p: dict) -> dict:
+    """Build the Altair theme config dict for the given palette."""
     return {
         "config": {
             "background": p["background"],
@@ -360,18 +397,28 @@ def _sts2_altair_theme() -> dict:
     }
 
 
-def register_altair_theme() -> None:
-    """Register and enable the 'sts2' Altair theme. Idempotent across reruns.
+def register_altair_theme(palette: dict | None = None) -> None:
+    """Register and enable the 'sts2' Altair theme for the given palette.
+
+    The theme is registered as a closure over the palette so re-calling
+    this function with a different palette (e.g. after a light/dark
+    toggle) re-binds the chart colors. Idempotent across reruns.
 
     Altair 5.5+ deprecated `alt.themes.register/enable` in favor of
-    `alt.theme.register(...)`. Try the new API first, fall back to the old
-    so this works on either generation.
+    `alt.theme.register(...)`. Try the new API first, fall back to the
+    old so this works on either generation.
     """
+    if palette is None:
+        palette = PALETTES["dark"]
+
+    def theme_fn() -> dict:
+        return _altair_config(palette)
+
     try:
         # Altair 5.5+ — register() is a decorator-factory that takes
         # (name, *, enable=False) and returns a decorator.
-        alt.theme.register("sts2", enable=True)(_sts2_altair_theme)
+        alt.theme.register("sts2", enable=True)(theme_fn)
     except AttributeError:
         # Altair < 5.5 — old API, two function calls.
-        alt.themes.register("sts2", _sts2_altair_theme)
+        alt.themes.register("sts2", theme_fn)
         alt.themes.enable("sts2")

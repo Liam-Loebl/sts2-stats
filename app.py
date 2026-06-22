@@ -24,7 +24,7 @@ from sts2_stats import queries
 from sts2_stats.db import connect
 from sts2_stats.importer import import_all
 from sts2_stats.paths import find_history_dirs  # noqa: F401  (kept for parity)
-from theme import CSS, PALETTE, CHARACTER_RANGE, register_altair_theme
+from theme import PALETTES, CHARACTER_RANGE, get_css, register_altair_theme
 
 
 # ---------------------------------------------------------------------------
@@ -49,8 +49,17 @@ st.set_page_config(
 )
 
 # Inject styling + register Altair theme exactly once per session.
-st.markdown(CSS, unsafe_allow_html=True)
-register_altair_theme()
+# Theme mode — defaults to dark (no flashbang on first load). User can
+# flip via the sidebar toggle, which writes back to session_state and
+# triggers a rerun. The chosen palette feeds both the CSS injection and
+# the Altair chart theme.
+if "theme_mode" not in st.session_state:
+    st.session_state["theme_mode"] = "dark"
+mode = st.session_state["theme_mode"]
+PALETTE = PALETTES[mode]
+
+st.markdown(get_css(PALETTE), unsafe_allow_html=True)
+register_altair_theme(PALETTE)
 
 
 # ---------------------------------------------------------------------------
@@ -140,9 +149,15 @@ def metric_card(
     )
 
 
-def character_tile(short_name: str, row: dict | None, *, selected: bool) -> None:
-    """Per-character tile: name eyebrow, big win rate, two muted subrows."""
-    classes = ["metric-card"]
+def character_tile(short_name: str, row: dict | None, *, selected: bool, color: str) -> None:
+    """Per-character tile: colored top stripe, name eyebrow in character color,
+    big win rate, two muted subrows.
+
+    color — hex string for this character (from CHARACTER_RANGE). Injected
+    via a `--char-color` CSS variable on the tile div so the stripe and
+    label pick it up.
+    """
+    classes = ["metric-card", "character-tile"]
     if selected:
         classes.append("is-selected")
 
@@ -168,7 +183,7 @@ def character_tile(short_name: str, row: dict | None, *, selected: bool) -> None
         )
 
     st.markdown(
-        f'<div class="{" ".join(classes)}">'
+        f'<div class="{" ".join(classes)}" style="--char-color: {html.escape(color)};">'
         f'<div class="metric-label">{html.escape(short_name)}</div>'
         f'<div class="metric-value">{win_rate}</div>'
         f"{runs_row}{floors_row}"
@@ -180,6 +195,25 @@ def character_tile(short_name: str, row: dict | None, *, selected: bool) -> None
 # ---------------------------------------------------------------------------
 # Sidebar — filters (same shape as Phase 2)
 # ---------------------------------------------------------------------------
+
+st.sidebar.markdown(
+    '<div class="eyebrow" style="margin: 0 0 0.75rem 0;">Theme</div>',
+    unsafe_allow_html=True,
+)
+_theme_choice = st.sidebar.radio(
+    "Theme",
+    ["Dark", "Light"],
+    index=0 if mode == "dark" else 1,
+    horizontal=True,
+    label_visibility="collapsed",
+    key="_theme_choice_radio",
+)
+_new_mode = "dark" if _theme_choice == "Dark" else "light"
+if _new_mode != mode:
+    st.session_state["theme_mode"] = _new_mode
+    st.rerun()
+
+st.sidebar.markdown("<hr>", unsafe_allow_html=True)
 
 st.sidebar.markdown(
     '<div class="eyebrow" style="margin: 0 0 0.75rem 0;">Filters</div>',
@@ -341,12 +375,12 @@ _eyebrow("Characters")
 per_char_by_name = {row["character"]: row for row in per_char}
 
 char_cols = st.columns(len(CHARACTERS), gap="small")
-for col, char in zip(char_cols, CHARACTERS):
+for col, char, color in zip(char_cols, CHARACTERS, CHARACTER_RANGE):
     short = char.replace("CHARACTER.", "")
     row = per_char_by_name.get(char)
     is_selected = character_value == char
     with col:
-        character_tile(short, row, selected=is_selected)
+        character_tile(short, row, selected=is_selected, color=color)
 
 
 # ---------------------------------------------------------------------------
