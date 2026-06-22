@@ -273,13 +273,12 @@ dmg_per_act = queries.damage_per_act(conn, filters)
 total_runs = topline.get("total_runs", 0)
 win_rate = topline.get("win_rate", 0.0) or 0.0
 best_streak = topline.get("best_streak", 0)
-most_played_asc = topline.get("most_played_ascension")
 wins = topline.get("wins", 0)
 losses = topline.get("losses", 0)
 
 
 # ---------------------------------------------------------------------------
-# Topline — hero win rate + 3 supporting tiles
+# Topline — hero win rate + 2 supporting tiles
 # ---------------------------------------------------------------------------
 
 _eyebrow("Topline")
@@ -296,16 +295,11 @@ with hero_col:
     )
 
 with side_col:
-    s1, s2, s3 = st.columns(3, gap="small")
+    s1, s2 = st.columns(2, gap="small")
     with s1:
         metric_card("Total runs", f"{total_runs}")
     with s2:
         metric_card("Best streak", f"{best_streak}")
-    with s3:
-        metric_card(
-            "Top ascension",
-            f"A{most_played_asc}" if most_played_asc is not None else "—",
-        )
 
 
 # ---------------------------------------------------------------------------
