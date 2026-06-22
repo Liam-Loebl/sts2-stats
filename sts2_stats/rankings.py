@@ -42,6 +42,7 @@ import sqlite3
 from collections import defaultdict
 from typing import Any
 
+from . import reworks
 from .names import pretty_card_name, pretty_character_name
 from .queries import apply_filters
 
@@ -72,16 +73,17 @@ def _filtered_runs(conn: sqlite3.Connection, filters: dict) -> dict[int, dict]:
     """Map run_id -> {character, win, floors_reached, start_time} for filtered runs."""
     where, params = apply_filters(filters)
     sql = (
-        "SELECT r.run_id, r.character, r.win, r.floors_reached, r.start_time "
+        "SELECT r.run_id, r.character, r.win, r.floors_reached, r.start_time, r.build_id "
         f"FROM runs r {where}"
     )
     runs: dict[int, dict] = {}
-    for run_id, character, win, floors_reached, start_time in conn.execute(sql, params):
+    for run_id, character, win, floors_reached, start_time, build_id in conn.execute(sql, params):
         runs[int(run_id)] = {
             "character": character,
             "win": int(win or 0),
             "floors_reached": int(floors_reached or 0),
             "start_time": int(start_time or 0),
+            "build_id": build_id,
         }
     return runs
 
@@ -278,14 +280,22 @@ def compute_rankings(
     acts_seen: set[int] = set()
 
     groups: dict[str, dict] = {}
+    invalid_groups: set[str] = set()  # reward whose picked card was reworked-out -> stale
 
     for run_id, reward_id, card_id, source, floor, act_index, was_picked, mpi in events:
         run = runs.get(int(run_id))
         if run is None:
             continue
         char = run["character"]
-        key = (card_id, char)
         act_no = int(act_index) + 1
+        # Card-rework valid-from filter: drop a reworked card's pre-rework events so
+        # only its current form counts. If the *picked* option is reworked-out, the
+        # whole reward is stale (drop from Elo/skip, don't turn it into a skip).
+        if reworks.event_excluded(card_id, run["build_id"]):
+            if was_picked:
+                invalid_groups.add(reward_id)
+            continue
+        key = (card_id, char)
         offers[key] += 1
         offers_act[key][act_no] += 1
         acts_seen.add(act_no)
@@ -297,6 +307,7 @@ def compute_rankings(
                 "source": source,
                 "act_index": int(act_index),
                 "mpi": int(mpi),
+                "floor": int(floor),
                 "options": [],
             }
         g["options"].append((card_id, int(was_picked)))
@@ -314,7 +325,8 @@ def compute_rankings(
                 cell[1] += base
                 cell[2] += 1
 
-    ratings, elo_counts = _run_elo(list(groups.values()), runs)
+    valid_groups = [g for rid, g in groups.items() if rid not in invalid_groups]
+    ratings, elo_counts = _run_elo(valid_groups, runs)
 
     def _skip_rating(ch: str, act_no: int) -> float:
         return ratings.get(ch, {}).get(_skip_key(act_no), ELO_INITIAL)
@@ -416,23 +428,66 @@ def compute_rankings(
     # WAR falls to the bottom of its offers tier.
     rows.sort(key=lambda r: (-r["offers"], 9.0 if r["war"] is None else -r["war"], r["card"]))
 
-    # Skip as its own entity per character, so the board can show it as a row
-    # ("where does my skip line sit among the cards?"). elo_vs_skip is 0 by
-    # definition — Skip *is* the skip line.
+    # Skip-as-a-choice stats per (character, act): treat skipping a skippable
+    # reward like picking "Skip", so Skip gets the same offers / pick% / win% / WAR
+    # columns as cards. Skippable = monster/elite/boss (ancient is a forced pick).
+    skip_off: dict[tuple, int] = defaultdict(int)
+    skip_pick: dict[tuple, int] = defaultdict(int)
+    skip_W: dict[tuple, float] = defaultdict(float)
+    skip_E: dict[tuple, float] = defaultdict(float)
+    skip_N: dict[tuple, int] = defaultdict(int)
+    skip_runs: dict[tuple, set] = defaultdict(set)
+    for g in valid_groups:
+        if g["source"] not in ELO_SKIPPABLE_SOURCES:
+            continue
+        run = runs.get(g["run_id"])
+        if run is None:
+            continue
+        sk = (run["character"], g["act_index"] + 1)
+        skip_off[sk] += 1
+        if not any(p for _, p in g["options"]):  # nothing taken -> I skipped
+            skip_pick[sk] += 1
+            skip_W[sk] += run["win"]
+            base = _baseline_rate(baselines, run["character"], g["floor"])
+            if base is not None:
+                skip_E[sk] += base
+                skip_N[sk] += 1
+            skip_runs[sk].add(g["run_id"])
+
+    # Skip rows: one per (character, act) with skippable rewards, fully populated
+    # like a card (Skip is the "is it worth taking?" baseline, so elo_vs_skip = 0).
     skip_rows: list[dict] = []
     for char in sorted({r["character"] for r in rows}):
         for act_no in sorted(acts_seen):
-            sn = _skip_count(char, act_no)
-            if sn <= 0:
+            sk = (char, act_no)
+            n_off = skip_off.get(sk, 0)
+            if n_off <= 0:
                 continue
+            n_pick = skip_pick.get(sk, 0)
+            n_war = skip_N.get(sk, 0)
+            if n_war > 0:
+                diff = skip_W[sk] - skip_E[sk]
+                s_war_raw, s_war = diff / n_war, diff / (n_war + WAR_SHRINKAGE_K)
+            else:
+                s_war_raw = s_war = None
+            prs = skip_runs.get(sk, set())
+            rp = len(prs)
+            wp = sum(runs[r]["win"] for r in prs)
+            if rp > 0:
+                s_wr_raw = wp / rp
+                s_wr = (wp + p_winpicked * WINRATE_PRIOR_M) / (rp + WINRATE_PRIOR_M)
+            else:
+                s_wr_raw = s_wr = None
+            sn = _skip_count(char, act_no)
             skip_rows.append({
                 "card_id": _skip_key(act_no), "card": f"Skip · Act {act_no}",
                 "character": char, "character_name": pretty_character_name(char),
-                "offers": None, "picks": None, "pick_rate": None,
-                "runs_picked": 0, "wins_picked": 0,
-                "winrate_raw": None, "winrate_shrunk": None,
-                "war_raw": None, "war": None, "war_n": 0, "war_by_act": {},
-                "elo": _skip_rating(char, act_no),
+                "offers": n_off, "picks": n_pick,
+                "pick_rate": (n_pick / n_off) if n_off else 0.0,
+                "runs_picked": rp, "wins_picked": wp,
+                "winrate_raw": s_wr_raw, "winrate_shrunk": s_wr,
+                "war_raw": s_war_raw, "war": s_war, "war_n": n_war, "war_by_act": {},
+                "elo": _skip_rating(char, act_no) if sn > 0 else None,
                 "elo_vs_skip": 0.0, "elo_vs_skip_raw": 0.0, "elo_n": sn,
                 "is_skip": True, "act": act_no,
             })

@@ -1,0 +1,4 @@
+{
+  "_comment": "Card-rebalance valid-from list. When a card is reworked in a patch, list it here so its stats only count from that version forward (its pre-rework data is excluded). Map a card_id to the minimum build_id its current form is valid from, e.g. \"CARD.WAR\": \"v0.101.0\". Cards not listed use all their data. Underscore-prefixed keys are notes and are ignored.",
+  "_example": "\"CARD.WAR\": \"v0.101.0\""
+}
