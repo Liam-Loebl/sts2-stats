@@ -47,11 +47,15 @@ PALETTE = {
 # rim/identity color for each character. Mega Crit does not publish
 # official hex values; these are the closest-to-source numbers available.
 CHARACTER_RANGE = [
-    "#e93e3b",  # Ironclad    — orb rim red (slightly warmer than crimson)
-    "#2ebd5d",  # Silent      — vivid jade/lime (not Tailwind forest emerald)
-    "#c64c84",  # Necrobinder — dusty rose-magenta (not Tailwind hot pink)
-    "#f9661c",  # Regent      — orb rim orange (slightly more red than amber)
-    "#438bd2",  # Defect      — medium muted blue (NOT cyan — orb has zero green)
+    "#c8232f",  # Ironclad    — deep crimson (darker + more saturated than the orb's
+                #                 lighter rim, which read as salmon on the dashboard)
+    "#1bc964",  # Silent      — vivid saturated jade (bumped from the orb extraction)
+    "#c93ea8",  # Necrobinder — saturated purple-magenta (hue pulled toward purple,
+                #                 saturation up — the dusty rose reading was too muted)
+    "#fa921e",  # Regent      — amber / yellow-orange (hue shifted yellower from the
+                #                 orb's red-orange rim)
+    "#4d9be0",  # Defect      — clean medium blue, brightened (NOT cyan; the orb has
+                #                 zero green channel, only lightened for visibility)
 ]
 
 FONT_FAMILY = "Inter, 'IBM Plex Sans', -apple-system, BlinkMacSystemFont, 'Segoe UI', system-ui, sans-serif"
