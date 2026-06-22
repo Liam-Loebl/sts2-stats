@@ -214,6 +214,7 @@ def metric_card(
     hero: bool = False,
     accent: bool = False,
     selected: bool = False,
+    secondary: bool = False,
 ) -> None:
     """Hand-rolled metric tile. Replaces st.metric."""
     classes = ["metric-card"]
@@ -225,6 +226,8 @@ def metric_card(
     value_classes = ["metric-value"]
     if hero:
         value_classes.append("is-hero")
+    if secondary:
+        value_classes.append("is-secondary")
     if accent:
         value_classes.append("is-accent")
 
@@ -249,38 +252,33 @@ def metric_card(
 
 
 def character_tile(short_name: str, row: dict | None, *, selected: bool, color: str) -> None:
-    """Per-character tile: colored top stripe, name eyebrow in character color,
-    big win rate, two muted subrows."""
+    """Per-character tile: colored top stripe + faint identity wash, big win
+    rate, a win-rate bar (so the row reads as a comparison strip), one meta line."""
     classes = ["metric-card", "character-tile"]
     if selected:
         classes.append("is-selected")
 
     if row and row["runs"] > 0:
+        pct = max(0.0, min(100.0, row["win_rate"] * 100))
         win_rate = f"{row['win_rate']:.1%}"
-        runs_row = (
-            f'<div class="tile-subrow"><span>Runs</span>'
-            f'<span class="v">{row["runs"]}</span></div>'
+        bar = (
+            '<div class="tile-bar"><div class="tile-bar-fill" '
+            f'style="width: {pct:.0f}%;"></div></div>'
         )
-        floors_row = (
-            f'<div class="tile-subrow"><span>Avg floors</span>'
-            f'<span class="v">{row["avg_floors_reached"]:.1f}</span></div>'
+        meta = (
+            f'<div class="tile-meta">{row["wins"]}W / {row["runs"]} runs '
+            f'· {row["avg_floors_reached"]:.0f} avg floors</div>'
         )
     else:
         win_rate = "—"
-        runs_row = (
-            '<div class="tile-subrow"><span>Runs</span>'
-            '<span class="v">0</span></div>'
-        )
-        floors_row = (
-            '<div class="tile-subrow"><span>Avg floors</span>'
-            '<span class="v">—</span></div>'
-        )
+        bar = '<div class="tile-bar"></div>'
+        meta = '<div class="tile-meta">No runs</div>'
 
     st.markdown(
         f'<div class="{" ".join(classes)}" style="--char-color: {html.escape(color)};">'
         f'<div class="metric-label">{html.escape(short_name)}</div>'
         f'<div class="metric-value">{win_rate}</div>'
-        f"{runs_row}{floors_row}"
+        f"{bar}{meta}"
         f"</div>",
         unsafe_allow_html=True,
     )

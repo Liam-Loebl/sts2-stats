@@ -333,6 +333,9 @@ h3, .stMarkdown h3 {{
 .metric-card.character-tile {{
     border-top: 3px solid var(--char-color);
     padding-top: 17px;  /* compensate for the stripe height */
+    /* faint identity wash so the character reads in light mode too, where the
+       saturated name color would fail small-text contrast on white */
+    background: color-mix(in srgb, var(--char-color) 7%, {palette['surface']});
 }}
 .metric-card.character-tile .metric-label {{
     /* Dark mode: name in the character's color (saturated, high contrast
@@ -377,16 +380,24 @@ h3, .stMarkdown h3 {{
 .metric-delta.is-positive {{ color: {palette['positive']}; }}
 .metric-delta.is-negative {{ color: {palette['negative']}; }}
 
-/* Sub-rows inside character tiles */
-.tile-subrow {{
-    display: flex;
-    justify-content: space-between;
-    font-size: 12px;
+/* Win-rate bar + one-line meta inside character tiles */
+.character-tile .tile-bar {{
+    height: 4px;
+    border-radius: 2px;
+    background: {palette['border']};
+    margin: 12px 0 8px 0;
+    overflow: hidden;
+}}
+.character-tile .tile-bar-fill {{
+    height: 100%;
+    background: var(--char-color);
+    border-radius: 2px;
+}}
+.character-tile .tile-meta {{
+    font-size: 11px;
     color: {palette['text_secondary']};
     font-variant-numeric: tabular-nums;
-    margin-top: 4px;
 }}
-.tile-subrow .v {{ color: {palette['text_primary']}; font-weight: 500; }}
 
 /* Page header strip — title left, last-sync right */
 .page-header {{
@@ -470,7 +481,7 @@ def _altair_config(p: dict) -> dict:
     return {
         "config": {
             "background": p["background"],
-            "view": {"stroke": None, "fill": p["surface"], "continuousWidth": 400, "continuousHeight": 280},
+            "view": {"stroke": None, "fill": p["background"], "continuousWidth": 400, "continuousHeight": 280},
             "font": "Inter",
             "title": {
                 "color": p["text_primary"],

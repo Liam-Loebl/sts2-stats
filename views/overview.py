@@ -46,7 +46,7 @@ losses = topline.get("losses", 0)
 
 dc.eyebrow("Summary")
 
-hero_col, side_col = st.columns([2, 3], gap="small")
+hero_col, side_col = st.columns([3, 2], gap="small")
 with hero_col:
     dc.metric_card(
         "Win rate",
@@ -58,9 +58,9 @@ with hero_col:
 with side_col:
     s1, s2 = st.columns(2, gap="small")
     with s1:
-        dc.metric_card("Total runs", f"{total_runs}")
+        dc.metric_card("Total runs", f"{total_runs}", secondary=True)
     with s2:
-        dc.metric_card("Best streak", f"{best_streak}")
+        dc.metric_card("Best streak", f"{best_streak}", secondary=True)
 
 
 # ---------------------------------------------------------------------------
@@ -76,7 +76,7 @@ if total_runs == 0:
     )
     st.markdown(
         '<div class="app-footer">'
-        "Phase 3 of 5 — card rankings (WAR, Elo) live on the Card Rankings page."
+        f"Personal Slay the Spire 2 run analytics · {total_runs} runs"
         "</div>",
         unsafe_allow_html=True,
     )
@@ -137,9 +137,13 @@ with left_col:
                     alt.Tooltip("win_rate:Q", title="Win rate", format=".1%"),
                 ],
             )
-            .properties(height=280)
         )
-        st.altair_chart(line, width="stretch", theme=None)
+        baseline = (
+            alt.Chart(pd.DataFrame({"y": [0.5]}))
+            .mark_rule(strokeDash=[4, 4], color=palette["text_secondary"], opacity=0.45)
+            .encode(y="y:Q")
+        )
+        st.altair_chart((baseline + line).properties(height=280), width="stretch", theme=None)
 
 with right_col:
     st.markdown(
@@ -178,7 +182,7 @@ with right_col:
                     "character_short:N",
                     sort=present_order,
                     scale=alt.Scale(domain=char_order, range=CHARACTER_RANGE),
-                    legend=alt.Legend(title=None),
+                    legend=None,  # the character tiles above are the shared color key
                 ),
                 tooltip=[
                     alt.Tooltip("character_short:N", title="Character"),
@@ -197,7 +201,7 @@ with right_col:
 
 st.markdown(
     '<div class="app-footer">'
-    "Phase 3 of 5 — card rankings (WAR, Elo) live on the Card Rankings page."
+    f"Personal Slay the Spire 2 run analytics · {total_runs} runs"
     "</div>",
     unsafe_allow_html=True,
 )
