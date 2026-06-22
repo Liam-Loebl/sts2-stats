@@ -121,7 +121,7 @@ def _insight_panel(title: str, subtitle: str, picks: list[dict], kind: str) -> s
         for r in picks:
             war = r["war"]
             vs = r["elo_vs_skip"]
-            war_s = f"{war:+.3f}" if war is not None else "—"
+            war_s = f"{war * 100:+.1f}" if war is not None else "—"
             items.append(
                 f'<div class="cr-insight-row">'
                 f'<span class="cr-insight-card">{html.escape(r["card"])}</span>'
@@ -249,7 +249,8 @@ def _pct(v) -> str:
 
 
 def _war_fmt(v) -> str:
-    return "—" if v is None or (isinstance(v, float) and math.isnan(v)) else f"{v:+.3f}"
+    # Displayed in win-rate points (x100): a WAR of 0.022 reads as +2.2.
+    return "—" if v is None or (isinstance(v, float) and math.isnan(v)) else f"{v * 100:+.1f}"
 
 
 def _int_or_dash(v) -> str:
@@ -315,9 +316,10 @@ st.dataframe(
             "Win %", help="Win rate of runs where I took it, shrunk toward my overall "
                           "win rate so a 2-for-2 card doesn't read as 100%."),
         "WAR": st.column_config.TextColumn(
-            "WAR", help="Wins Above Replacement: how much more I win when I take this card "
-                        "vs. the average run that reached the same floor as that character. "
-                        "Shrunk toward 0 for low samples. Green = wins more, red = wins less."),
+            "WAR", help="Wins Above Replacement, in win-rate points: +2.2 means my runs win ~2.2 "
+                        "percentage points more often when I take this card than the average run that "
+                        "reached the same floor as that character. Shrunk toward 0 for low samples. "
+                        "Green = wins more, red = wins less."),
         "Elo": st.column_config.TextColumn(
             "Elo", help="Preference rating from treating every reward as a mini-tournament. "
                         "Per-character pool, everyone starts at 1500. Shown only for cards that competed."),
@@ -349,7 +351,9 @@ own win rate among runs of that character that *reached that same floor*. Pinnin
 the baseline to the floor strips out survivorship bias (a card only offered late
 shouldn't get credit for the run already surviving that long). WAR is the average
 of those per-pick lifts, shrunk toward 0 by {meta['war_shrinkage_k']:.0f} phantom
-replacement-level picks so tiny samples don't show fake extremes.
+replacement-level picks so tiny samples don't show fake extremes. It's shown in
+win-rate points, so **+2.2** means +2.2 percentage points of win rate per pick
+(not 0.022).
 
 **Elo — preference (do I *take* it?).**
 Each reward is a mini-tournament: the card I pick beats every alternative,
