@@ -450,8 +450,9 @@ def check_rankings_engine(conn: sqlite3.Connection, r: Reporter) -> None:
     dev: dict[str, float] = {}
     for x in rows:
         dev[x["character"]] = dev.get(x["character"], 0.0) + (_rating(x) - init)
-    for char, skip in meta["skip_elo"].items():
-        dev[char] = dev.get(char, 0.0) + (skip - init)
+    for char, acts in meta["skip_elo"].items():  # skip_elo is now {char: {act: rating}}
+        for rating in acts.values():
+            dev[char] = dev.get(char, 0.0) + (rating - init)
     worst = max((abs(v) for v in dev.values()), default=0.0)
     if worst < 1e-6:
         r.ok(f"Elo zero-sum per character (worst residual {worst:.1e})")

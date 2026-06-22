@@ -15,7 +15,9 @@ import streamlit as st
 
 import dashboard_common as dc
 from sts2_stats import rankings
+from sts2_stats.names import pretty_character_name
 from sts2_stats.queries import apply_filters
+from theme import CHARACTER_RANGE
 
 palette = st.session_state["palette"]
 filters = st.session_state["filters"]
@@ -27,8 +29,8 @@ dc.page_header("Card Rankings")
 # Available acts (derived from data — never hardcode "3 acts")
 # ---------------------------------------------------------------------------
 
-def _available_acts(conn) -> list[int]:
-    where, params = apply_filters(filters)
+def _available_acts(conn, f: dict) -> list[int]:
+    where, params = apply_filters(f)
     clause = (where + " AND " if where else "WHERE ") + (
         "ce.source_type IN ('monster','elite','boss','ancient')"
     )
@@ -41,9 +43,23 @@ def _available_acts(conn) -> list[int]:
 
 conn = dc.connect_db()
 try:
-    acts = _available_acts(conn)
+    # --- character filter: Overall + per character (the board's own control) ---
+    char_labels = ["Overall"] + [c.replace("CHARACTER.", "") for c in dc.CHARACTERS]
+    _sidebar_char = filters.get("character")
+    _default_char = "Overall" if not _sidebar_char else _sidebar_char.replace("CHARACTER.", "")
+    char_choice = st.radio(
+        "Character",
+        char_labels,
+        index=char_labels.index(_default_char) if _default_char in char_labels else 0,
+        horizontal=True,
+        key="_cr_char",
+    )
+    board_character = None if char_choice == "Overall" else f"CHARACTER.{char_choice}"
+    board_filters = {**filters, "character": board_character}
 
-    # --- controls row ---
+    acts = _available_acts(conn, board_filters)
+
+    # --- act / sort / sample-size controls ---
     c1, c2, c3 = st.columns([2, 2, 3], gap="medium")
     with c1:
         act_labels = ["Overall"] + [f"Act {a}" for a in acts]
@@ -64,11 +80,12 @@ try:
                  "shown for every card that clears the bar.",
         )
 
-    res = rankings.compute_rankings(conn, filters, act=act)
+    res = rankings.compute_rankings(conn, board_filters, act=act)
 finally:
     conn.close()
 
 rows = res["rows"]
+skip_rows = res.get("skip_rows", [])
 meta = res["meta"]
 
 
@@ -85,7 +102,8 @@ if meta["n_runs"] == 0 or not rows:
     )
     st.stop()
 
-shown = [r for r in rows if r["offers"] >= min_offers]
+cards_shown = [r for r in rows if r["offers"] >= min_offers]
+shown = cards_shown + skip_rows  # Skip rows are exempt from the offers gate
 
 
 # ---------------------------------------------------------------------------
@@ -176,7 +194,7 @@ with i2:
 # The board table
 # ---------------------------------------------------------------------------
 
-dc.eyebrow(f"All cards ({len(shown)} shown · offered ≥ {min_offers}×)")
+dc.eyebrow(f"All cards ({len(cards_shown)} shown · offered ≥ {min_offers}×) + a Skip line per act")
 
 _sort_key = {
     "WAR": ("war", False),
@@ -203,8 +221,8 @@ for r in shown_sorted:
     table.append({
         "Card": r["card"],
         "Char": r["character_name"],
-        "Offers": r["offers"],
-        "Picks": r["picks"],
+        "Offers": _num_or_nan(r["offers"]),
+        "Picks": _num_or_nan(r["picks"]),
         "Pick %": r["pick_rate"],
         "Win %": _num_or_nan(r["winrate_shrunk"]),
         "WAR": _num_or_nan(r["war"]),
@@ -242,15 +260,40 @@ def _signed_or_dash(v) -> str:
     return "—" if v is None or (isinstance(v, float) and math.isnan(v)) else f"{v:+.0f}"
 
 
+def _hex_to_rgb(h: str) -> tuple[int, int, int]:
+    h = h.lstrip("#")
+    return int(h[0:2], 16), int(h[2:4], 16), int(h[4:6], 16)
+
+
+# Pretty character name -> rgb, so the Card / Char cells can carry each
+# character's identity color (the same hexes as the Overview character tiles).
+_CHAR_RGB = {
+    pretty_character_name(cid): _hex_to_rgb(col)
+    for cid, col in zip(dc.CHARACTERS, CHARACTER_RANGE)
+}
+
+
+def _char_row_bg(row) -> list:
+    """Tint the Card and Char cells with the row's character identity color."""
+    rgb = _CHAR_RGB.get(row["Char"])
+    styles = ["" for _ in row]
+    if rgb:
+        bg = f"background-color: rgba({rgb[0]}, {rgb[1]}, {rgb[2]}, 0.22)"
+        for col in ("Card", "Char"):
+            styles[row.index.get_loc(col)] = bg
+    return styles
+
+
 styler = (
     df.style
+    .apply(_char_row_bg, axis=1)
     .map(_war_bg, subset=["WAR"])
     .format({
         "Pick %": _pct,
         "Win %": _pct,
         "WAR": _war_fmt,
-        "Offers": "{:.0f}",
-        "Picks": "{:.0f}",
+        "Offers": _int_or_dash,
+        "Picks": _int_or_dash,
         "Elo": _int_or_dash,
         "vs Skip": _signed_or_dash,
         "Elo N": "{:.0f}",
@@ -265,8 +308,8 @@ st.dataframe(
     column_config={
         "Card": st.column_config.TextColumn("Card", width="medium"),
         "Char": st.column_config.TextColumn("Char", width="small"),
-        "Offers": st.column_config.NumberColumn("Offers", help="Times this card was offered (sample size)."),
-        "Picks": st.column_config.NumberColumn("Picks", help="Times I took it."),
+        "Offers": st.column_config.TextColumn("Offers", help="Times this card was offered (sample size)."),
+        "Picks": st.column_config.TextColumn("Picks", help="Times I took it."),
         "Pick %": st.column_config.TextColumn("Pick %", help="Picks ÷ Offers."),
         "Win %": st.column_config.TextColumn(
             "Win %", help="Win rate of runs where I took it, shrunk toward my overall "
@@ -279,8 +322,8 @@ st.dataframe(
             "Elo", help="Preference rating from treating every reward as a mini-tournament. "
                         "Per-character pool, everyone starts at 1500. Shown only for cards that competed."),
         "vs Skip": st.column_config.TextColumn(
-            "vs Skip", help="Elo minus this character's Skip rating — the cross-character-comparable "
-                            "'is it worth taking' number, shrunk toward the skip line for low match "
+            "vs Skip", help="Elo minus this character's act-weighted Skip line (Skip is rated per act) — "
+                            "the 'is it worth taking' number, shrunk toward the skip line for low match "
                             "counts. Positive = above my skip line. Shown only for cards that competed."),
         "Elo N": st.column_config.NumberColumn(
             "Elo N", help="Reward tournaments this card actually competed in (the Elo sample size)."),
@@ -312,10 +355,12 @@ replacement-level picks so tiny samples don't show fake extremes.
 Each reward is a mini-tournament: the card I pick beats every alternative,
 including **Skip**, and the rating moves are summed (beating three options is a
 stronger signal than beating one). Pools are per-character; Skip is a rated
-entity, so a card's **vs Skip** value says whether I treat it as worth taking.
+entity **rated separately per act** (the value of skipping shifts from act 1 to
+act 3), so the board shows a **Skip** line for each act, and a card's **vs Skip**
+value (vs the act-weighted skip line) says whether I treat it as worth taking.
 Step size K = {meta['elo_k']:.0f}. *vs Skip* is shrunk toward the skip line for
-cards with few matches, and shown only for cards that actually competed, so a
-single lucky pick can't headline.
+cards with few matches and shown only for cards that competed, so a single lucky
+pick can't headline.
 
 **The gap is the point.** High *vs Skip* + negative *WAR* = a card I overrate;
 positive *WAR* + negative *vs Skip* = one I underrate. Both lists are at the top

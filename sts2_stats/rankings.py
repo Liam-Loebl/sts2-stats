@@ -58,6 +58,9 @@ ELO_K = 24.0             # Elo step size per pairwise match
 ELO_INITIAL = 1500.0     # starting rating for every card and for SKIP
 ELO_SHRINKAGE_K = 10.0   # phantom 'no-preference' matches; shrinks elo_vs_skip toward the
                          # skip line at low match counts, mirroring WAR/win% shrinkage
+ELO_MAX_REWARD_CARDS = 5  # a node offering more DISTINCT cards than this is the save
+                          # flattening several card offers at one node (un-splittable);
+                          # excluded from Elo, still counted in WAR/pick%
 SKIP_KEY = "__SKIP__"    # sentinel entity id for the per-character skip rating
 
 
@@ -130,14 +133,23 @@ def _expected(r_a: float, r_b: float) -> float:
     return 1.0 / (1.0 + 10.0 ** ((r_b - r_a) / 400.0))
 
 
-def _run_elo(groups: list[dict], runs: dict[int, dict]) -> tuple[dict, dict, dict]:
+def _skip_key(act_no: int) -> str:
+    """Per-act Skip entity id, e.g. '__SKIP__:1'. Skip is rated separately per
+    act, since the value of skipping shifts from act 1 (lots worth taking) to
+    act 3 (deck built, skipping more often correct)."""
+    return f"{SKIP_KEY}:{act_no}"
+
+
+def _run_elo(groups: list[dict], runs: dict[int, dict]) -> tuple[dict, dict]:
     """Chronological per-character Elo.
 
     `groups` is a list of dicts: {run_id, source, act_index, mpi, options}
     where options is a list of (card_id, was_picked). Returns:
-      ratings[char][entity]  -> final rating (entity = card_id or SKIP_KEY)
+      ratings[char][entity]  -> final rating (entity = card_id or a per-act skip
+                                key from _skip_key(act_no))
       counts[char][entity]   -> number of reward groups the entity played in
-      skip[char]             -> final SKIP rating (ELO_INITIAL if it never played)
+    Skip is rated per act (one entity per act), so the caller reads each act's
+    skip rating from ratings[char][_skip_key(act_no)].
     """
     ratings: dict[str, dict[str, float]] = defaultdict(lambda: defaultdict(lambda: ELO_INITIAL))
     counts: dict[str, dict[str, int]] = defaultdict(lambda: defaultdict(int))
@@ -152,6 +164,7 @@ def _run_elo(groups: list[dict], runs: dict[int, dict]) -> tuple[dict, dict, dic
         if run is None:
             continue
         char = run["character"]
+        act_no = g["act_index"] + 1  # Skip is rated per act (see _skip_key)
         # Collapse duplicate option rows: the same card_id can appear more than
         # once in one reward group (several reward screens share a map point under
         # reward_event_id = run:act:map_point_index, or a restock repeats a card).
@@ -170,19 +183,26 @@ def _run_elo(groups: list[dict], runs: dict[int, dict]) -> tuple[dict, dict, dic
         if n_picked > 1:
             continue
 
+        # Oversized nodes (more distinct cards than a single reward can offer) are
+        # the save flattening several card offers at one node into one list. They
+        # can't be split into screens, and treating them as one tournament would
+        # over-credit the pick, so they're excluded from Elo (still in WAR/pick%).
+        if len(cards) > ELO_MAX_REWARD_CARDS:
+            continue
+
         skippable = g["source"] in ELO_SKIPPABLE_SOURCES
 
         if n_picked == 1:
             winner = next(cid for cid, f in picked_flags.items() if f)
             losers = [cid for cid in cards if cid != winner]
             if skippable:
-                losers.append(SKIP_KEY)
+                losers.append(_skip_key(act_no))
         else:  # n_picked == 0
             if not skippable:
                 # Forced-pick reward with nothing taken = run ended mid-reward;
                 # no meaningful preference signal. Skip it.
                 continue
-            winner = SKIP_KEY
+            winner = _skip_key(act_no)
             losers = list(cards)
 
         if not losers:
@@ -204,8 +224,7 @@ def _run_elo(groups: list[dict], runs: dict[int, dict]) -> tuple[dict, dict, dic
         for loser in losers:
             counts[char][loser] += 1
 
-    skip = {char: pool.get(SKIP_KEY, ELO_INITIAL) for char, pool in ratings.items()}
-    return ratings, counts, skip
+    return ratings, counts
 
 
 # ---------------------------------------------------------------------------
@@ -255,6 +274,8 @@ def compute_rankings(
     war_N: dict[tuple, int] = defaultdict(int)
     war_act: dict[tuple, dict[int, list]] = defaultdict(lambda: defaultdict(lambda: [0.0, 0.0, 0]))  # act -> [W,E,N]
     picked_runs: dict[tuple, set] = defaultdict(set)
+    offers_act: dict[tuple, dict[int, int]] = defaultdict(lambda: defaultdict(int))  # (card,char) -> act -> offers
+    acts_seen: set[int] = set()
 
     groups: dict[str, dict] = {}
 
@@ -264,7 +285,10 @@ def compute_rankings(
             continue
         char = run["character"]
         key = (card_id, char)
+        act_no = int(act_index) + 1
         offers[key] += 1
+        offers_act[key][act_no] += 1
+        acts_seen.add(act_no)
 
         g = groups.get(reward_id)
         if g is None:
@@ -285,13 +309,18 @@ def compute_rankings(
             if base is not None:
                 war_E[key] += base
                 war_N[key] += 1
-                act_no = int(act_index) + 1
                 cell = war_act[key][act_no]
                 cell[0] += run["win"]
                 cell[1] += base
                 cell[2] += 1
 
-    ratings, elo_counts, skip_elo = _run_elo(list(groups.values()), runs)
+    ratings, elo_counts = _run_elo(list(groups.values()), runs)
+
+    def _skip_rating(ch: str, act_no: int) -> float:
+        return ratings.get(ch, {}).get(_skip_key(act_no), ELO_INITIAL)
+
+    def _skip_count(ch: str, act_no: int) -> int:
+        return elo_counts.get(ch, {}).get(_skip_key(act_no), 0)
 
     # Win%-when-picked shrinks toward the pooled grand mean of THAT conditional
     # quantity, not the per-run win rate p0. Winning runs survive longer and so
@@ -338,10 +367,17 @@ def compute_rankings(
             winrate_raw = winrate_shrunk = None
 
         elo_n = elo_counts.get(char, {}).get(card_id, 0)
-        skip_val = skip_elo.get(char, ELO_INITIAL)
         if elo_n > 0:
             elo_val = ratings.get(char, {}).get(card_id, ELO_INITIAL)
-            vs_skip_raw = elo_val - skip_val
+            # Skip is rated per act; compare the card to the offer-weighted average
+            # of the per-act skip lines for the act(s) it's actually offered in.
+            oa = offers_act.get(key, {})
+            den = sum(oa.values())
+            weighted_skip = (
+                sum(_skip_rating(char, a) * n for a, n in oa.items()) / den
+                if den else ELO_INITIAL
+            )
+            vs_skip_raw = elo_val - weighted_skip
             # Shrink the preference toward the skip line (0) at low match count,
             # mirroring WAR/win% shrinkage so a 1-match card can't headline.
             vs_skip = vs_skip_raw * (elo_n / (elo_n + ELO_SHRINKAGE_K))
@@ -380,11 +416,37 @@ def compute_rankings(
     # WAR falls to the bottom of its offers tier.
     rows.sort(key=lambda r: (-r["offers"], 9.0 if r["war"] is None else -r["war"], r["card"]))
 
+    # Skip as its own entity per character, so the board can show it as a row
+    # ("where does my skip line sit among the cards?"). elo_vs_skip is 0 by
+    # definition — Skip *is* the skip line.
+    skip_rows: list[dict] = []
+    for char in sorted({r["character"] for r in rows}):
+        for act_no in sorted(acts_seen):
+            sn = _skip_count(char, act_no)
+            if sn <= 0:
+                continue
+            skip_rows.append({
+                "card_id": _skip_key(act_no), "card": f"Skip · Act {act_no}",
+                "character": char, "character_name": pretty_character_name(char),
+                "offers": None, "picks": None, "pick_rate": None,
+                "runs_picked": 0, "wins_picked": 0,
+                "winrate_raw": None, "winrate_shrunk": None,
+                "war_raw": None, "war": None, "war_n": 0, "war_by_act": {},
+                "elo": _skip_rating(char, act_no),
+                "elo_vs_skip": 0.0, "elo_vs_skip_raw": 0.0, "elo_n": sn,
+                "is_skip": True, "act": act_no,
+            })
+
+    skip_elo_meta = {
+        char: {a: _skip_rating(char, a) for a in sorted(acts_seen) if _skip_count(char, a) > 0}
+        for char in sorted({r["character"] for r in rows})
+    }
+
     meta = {
         "n_runs": len(runs),
         "p0": p0,
         "p_winpicked": p_winpicked,
-        "skip_elo": skip_elo,
+        "skip_elo": skip_elo_meta,
         "war_shrinkage_k": WAR_SHRINKAGE_K,
         "winrate_prior_m": WINRATE_PRIOR_M,
         "elo_k": ELO_K,
@@ -395,4 +457,4 @@ def compute_rankings(
         "n_cards": len(rows),
         "n_events": len(events),
     }
-    return {"rows": rows, "meta": meta}
+    return {"rows": rows, "skip_rows": skip_rows, "meta": meta}

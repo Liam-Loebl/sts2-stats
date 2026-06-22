@@ -214,7 +214,7 @@ the picked option plays a separate match against each other option, and the upda
 
 Other Elo decisions:
 - Per-character pools (cards are character-specific); optionally per-act Elo.
-- Model a per-character Skip rating: cards above it are "worth taking," below it "usually pass."
+- Model a Skip rating per character **and per act** (the skip line shifts by act): cards above it are "worth taking," below it "usually pass."
 - Chronological Elo first (process oldest→newest, like Jorbs), which enables an Elo-over-time trend.
   A Bradley-Terry batch model (order-independent, statistically cleaner) is a later refinement.
 - K-factor tunable.
@@ -264,12 +264,19 @@ match), an Elo zero-sum-per-character invariant, and a determinism check, all
 wired into `verify.py`. The UI is the Card Rankings page
 (`views/card_rankings.py`).
 
-**Known limitation (deferred).** `reward_event_id = run_id:act_index:map_point_index`
-can merge multiple reward screens at one map point into a single group, so a
-card_id can appear more than once in a group. Elo dedups per group (Elo-local, so
-a card plays each tournament once and its Elo N counts distinct groups), but
-`offers` / `pick%` still count every option row — ~1.5% of in-scope groups are
-affected. The clean fix is parser-side screen separation, deferred to a later pass.
+**Reward-size handling (investigated 2026-06-22).** The save stores every card
+offered at a node in one flat `card_choices` list with **no** screen/reward
+markers, so a node can list more cards than a single 3-card reward (relic
+re-rolls / bonus rewards), and the oversized counts aren't multiples of 3 — they
+can't be split back into screens. ~92% of combat rewards are the normal 3. The
+Elo engine therefore (1) dedups repeated `card_id`s within a node (Elo-local),
+(2) excludes multi-pick nodes (`SUM(was_picked) > 1`), and (3) excludes nodes
+with more than `ELO_MAX_REWARD_CARDS` (= 5) distinct cards, since those are
+aggregated multi-offers and treating them as one tournament would over-credit the
+pick (~5% of in-scope groups, 82, dropped from Elo). WAR and pick% still count
+every card offered. Skip is rated **per act** and exposed as a per-act Skip line
+on the board (the skip line rises across acts). The clean long-term fix
+(parser-side screen separation) stays deferred.
 
 ### 5.5 The headline insight: WAR vs Elo
 WAR = what *wins*; Elo = what I *prefer*. The gap is the gold:
