@@ -47,9 +47,10 @@ PALETTE = {
 # rim/identity color for each character. Mega Crit does not publish
 # official hex values; these are the closest-to-source numbers available.
 CHARACTER_RANGE = [
-    "#d4252e",  # Ironclad    — deep crimson, small brighten + slightly more pure red
-                #                 (lower B channel; was reading just a hair too cool)
-    "#1ed75e",  # Silent      — vivid saturated green (matches user swatch)
+    "#e02b32",  # Ironclad    — deep crimson, brightened (R 212 -> 224); still a true
+                #                 red, just a notch livelier on the dark background
+    "#1eca58",  # Silent      — vivid green, dropped one notch from #1ed75e
+                #                 (G 215 -> 202) so it doesn't glow over the rest of the palette
     "#c93ea8",  # Necrobinder — saturated purple-magenta (hue pulled toward purple,
                 #                 saturation up — the dusty rose reading was too muted)
     "#fa921e",  # Regent      — amber / yellow-orange (hue shifted yellower from the
