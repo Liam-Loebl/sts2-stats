@@ -285,6 +285,8 @@ Priority order (build top-down):
 
 Parked for later: a run-by-run timeline browser (replay a run's picks/skips/deck/map as data).
 
+**Multi-page restructure (deferred):** Phase 2's single-page Overview is already starting to feel crowded with the topline + character tiles + two charts. Once Phase 3 (card rankings) and Phase 4 (per-card / per-character detail) land, the page will be too long to scroll comfortably. Plan: switch to Streamlit's multipage app pattern (a `pages/` directory with one script per view, automatic sidebar nav). Trigger: user explicitly asks, or the Overview scroll length crosses roughly three viewports.
+
 **Aesthetic:** lean thematic (StS2-flavored: dark, gritty), but refine the look after there's
 a working build to react to. Start functional + themeable; escalate to a more custom UI only if I want it.
 
