@@ -203,7 +203,7 @@ game_mode_map = {"Standard": "standard", "All": "all"}
 st.sidebar.markdown("<hr>", unsafe_allow_html=True)
 
 include_abandoned = st.sidebar.checkbox("Include abandoned runs", value=False)
-ascension_min = st.sidebar.slider("Minimum ascension", 0, 20, 0)
+ascension_min = st.sidebar.slider("Minimum ascension", 0, 10, 0)
 
 st.sidebar.markdown("<hr>", unsafe_allow_html=True)
 

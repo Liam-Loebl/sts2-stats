@@ -36,9 +36,17 @@ PALETTE = {
     "negative":       "#F85149",
 }
 
-# Categorical range for the 5 characters (desaturated, mid-luminance,
-# deliberately NOT a rainbow).
-CHARACTER_RANGE = ["#7C5CFF", "#06B6D4", "#F59E0B", "#EC4899", "#10B981"]
+# Character colors — positional, pairs with the CHARACTERS list in app.py
+# (IRONCLAD, SILENT, DEFECT, REGENT, NECROBINDER) via domain=char_order on
+# the Altair color scale. Matches the game's character-color associations
+# (Ironclad red, Silent green, Defect cyan, Regent amber, Necrobinder fuchsia).
+CHARACTER_RANGE = [
+    "#ef4444",  # Ironclad — red
+    "#22c55e",  # Silent — green
+    "#38bdf8",  # Defect — light blue (cyan)
+    "#f59e0b",  # Regent — amber / yellow-orange
+    "#d946ef",  # Necrobinder — fuchsia / purple-pink
+]
 
 FONT_FAMILY = "Inter, 'IBM Plex Sans', -apple-system, BlinkMacSystemFont, 'Segoe UI', system-ui, sans-serif"
 
