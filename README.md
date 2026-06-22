@@ -8,9 +8,9 @@
 
 [Jorbs](https://www.twitch.tv/jorbs) is widely regarded as one of the best Slay the Spire players in the world. A week or two after Slay the Spire 2 hit Steam Early Access in March 2026, he started keeping a spreadsheet logging every run he plays — what character, what cards he picked, whether he won. He uses it to find the leaks in his own play: cards he keeps picking that don't actually win him games, cards he keeps skipping that would.
 
-I've watched a lot of his streams. I wanted the same feedback loop for my own play — except I didn't want to fill in a spreadsheet by hand after every run. The game already writes a JSON file to disk every time a run ends. The data is right there. I just had to get it out.
+I've watched a lot of his videos. I wanted the same feedback loop for my own play — except I didn't want to fill in a spreadsheet by hand after every run. The game already writes a JSON file to disk every time a run ends. The data is right there. I just had to get it out.
 
-I'm building it because I actually want to use it to get better at the game — and because it's the first real software project where I've had to make all the design decisions myself (schema, statistical methodology, edge cases I didn't anticipate) instead of following a tutorial.
+I'm building it because I actually want to use it to get better at the game — and because it's the biggest software project I've designed end-to-end, with all the design decisions on me (schema, statistical methodology, edge cases I didn't anticipate) instead of following a tutorial.
 
 ## What's live right now (Phase 1)
 
