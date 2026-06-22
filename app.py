@@ -37,9 +37,9 @@ IMPORT_STALE_SECONDS = 5 * 60  # re-import if DB older than 5 minutes
 CHARACTERS = [
     "CHARACTER.IRONCLAD",
     "CHARACTER.SILENT",
-    "CHARACTER.DEFECT",
     "CHARACTER.REGENT",
     "CHARACTER.NECROBINDER",
+    "CHARACTER.DEFECT",
 ]
 
 st.set_page_config(
