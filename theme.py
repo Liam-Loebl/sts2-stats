@@ -47,8 +47,8 @@ PALETTE = {
 # rim/identity color for each character. Mega Crit does not publish
 # official hex values; these are the closest-to-source numbers available.
 CHARACTER_RANGE = [
-    "#c8232f",  # Ironclad    — deep crimson (darker + more saturated than the orb's
-                #                 lighter rim, which read as salmon on the dashboard)
+    "#d4252e",  # Ironclad    — deep crimson, small brighten + slightly more pure red
+                #                 (lower B channel; was reading just a hair too cool)
     "#1ed75e",  # Silent      — vivid saturated green (matches user swatch)
     "#c93ea8",  # Necrobinder — saturated purple-magenta (hue pulled toward purple,
                 #                 saturation up — the dusty rose reading was too muted)
