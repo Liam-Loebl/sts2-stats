@@ -166,18 +166,18 @@ def _num_or_nan(v):
     return v if v is not None else float("nan")
 
 
-show_char = board_character is None  # the Char column is redundant when filtered to one
 table = []
 for r in shown_sorted:
-    rowd = {"Card": r["card"]}
-    if show_char:
-        rowd["Char"] = r["character_name"]
-    rowd["Offers"] = _num_or_nan(r["offers"])
-    rowd["Pick %"] = r["pick_rate"]
-    rowd["Win %"] = _num_or_nan(r["winrate_shrunk"])
-    rowd["WAR"] = _num_or_nan(r["war"])
-    rowd["vs Skip"] = round(r["elo_vs_skip"]) if r["elo_vs_skip"] is not None else float("nan")
-    table.append(rowd)
+    table.append({
+        "Card": r["card"],
+        "Char": r["character_name"],
+        "Offers": _num_or_nan(r["offers"]),
+        "Pick %": r["pick_rate"],
+        "Win %": _num_or_nan(r["winrate_shrunk"]),
+        "WAR": _num_or_nan(r["war"]),
+        "Elo": round(r["elo"]) if r["elo"] is not None else float("nan"),
+        "vs Skip": round(r["elo_vs_skip"]) if r["elo_vs_skip"] is not None else float("nan"),
+    })
 
 df = pd.DataFrame(table)
 
@@ -253,6 +253,7 @@ styler = (
         "Win %": _pct,
         "WAR": _war_fmt,
         "Offers": _int_or_dash,
+        "Elo": _int_or_dash,
         "vs Skip": _signed_or_dash,
     })
 )
@@ -261,8 +262,8 @@ styler = (
 # static config.toml theme (dark) and can't be re-themed per the light/dark
 # toggle, so we render the Styler to HTML and color it from the active palette.
 # Sorting is via the "Sort by" control above; column meanings are in the expander.
-_num_cols = [c for c in ("Offers", "Pick %", "Win %", "WAR", "vs Skip") if c in df.columns]
-_left_th = "thead th.col0" + (", thead th.col1" if show_char else "")
+_num_cols = ["Offers", "Pick %", "Win %", "WAR", "Elo", "vs Skip"]
+_left_th = "thead th.col0, thead th.col1"
 styler = (
     styler
     .hide(axis="index")

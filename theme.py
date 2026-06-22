@@ -171,6 +171,8 @@ ul[data-baseweb="menu"] li { color: TEXT !important; }
     border-color: BORDER !important;
 }
 .stApp div[data-baseweb="input"] input { color: TEXT !important; }
+.stApp div[data-baseweb="input"] input::placeholder,
+.stApp div[data-baseweb="base-input"] input::placeholder { color: TEXT2 !important; opacity: 1; }
 """
     return (
         css.replace("SURFACE", p["surface"])
