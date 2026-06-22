@@ -37,14 +37,16 @@ PALETTES = {
         "negative":       "#F85149",
     },
     "light": {
-        "background":     "#FFFFFF",  # flipped from near-black
-        "surface":        "#F5F5F7",  # subtle lift off white
-        "border":         "#E5E7EB",
-        "text_primary":   "#11151B",  # flipped from near-white
-        "text_secondary": "#6B7280",
+        # Background is a soft warm off-white, not pure #FFFFFF — easier
+        # on the eyes and lets the white surface cards visually lift.
+        "background":     "#F2EFE8",
+        "surface":        "#FFFFFF",  # cards "lift" above the cream bg
+        "border":         "#E0DCD2",
+        "text_primary":   "#1A1814",  # warm dark, strong contrast on cream
+        "text_secondary": "#6B6663",
         "accent":         "#7C5CFF",  # same purple
         "accent_muted":   "#7C5CFF1F",
-        "positive":       "#15803D",  # darker for contrast on white
+        "positive":       "#15803D",  # darker for contrast on light bg
         "negative":       "#B91C1C",
     },
 }
@@ -105,6 +107,41 @@ section[data-testid="stSidebar"] {{
     -moz-osx-font-smoothing: grayscale;
 }}
 
+/* Critical: override Streamlit's base="dark" page background + default
+   text color from .streamlit/config.toml. Without these rules the dark
+   base bleeds through in light mode. !important is needed because
+   Streamlit's own rules have decent specificity. */
+html, body, .stApp, .main {{
+    background-color: {palette['background']} !important;
+    color: {palette['text_primary']} !important;
+}}
+.stApp [data-testid="stAppViewContainer"],
+.stApp [data-testid="stMain"] {{
+    background-color: {palette['background']} !important;
+}}
+/* Streamlit uses CSS custom properties for its internal widget styling.
+   Re-bind them to the active palette so radios / sliders / selectboxes
+   pick up the right tones in light mode. */
+:root, .stApp {{
+    --background-color: {palette['background']};
+    --secondary-background-color: {palette['surface']};
+    --text-color: {palette['text_primary']};
+    --primary-color: {palette['accent']};
+}}
+/* Catch-all body / markdown / widget text so nothing reverts to
+   Streamlit's hardcoded white in light mode. Children with explicit
+   color (metric-value, metric-label, chart-title, etc.) win by
+   specificity. */
+.stApp .stMarkdown,
+.stApp .stMarkdown p,
+.stApp p,
+.stApp .stRadio > label,
+.stApp .stCheckbox > label,
+.stApp .stSelectbox > label,
+.stApp .stSlider > label {{
+    color: {palette['text_primary']};
+}}
+
 /* Hide Streamlit chrome */
 #MainMenu {{ visibility: hidden; }}
 footer {{ visibility: hidden; }}
@@ -136,23 +173,24 @@ section[data-testid="stSidebar"] label {{
     letter-spacing: 0.02em;
 }}
 
-/* Headings — kill the giant default st.title */
+/* Headings — kill the giant default st.title (!important on color to
+   beat Streamlit's base="dark" default which otherwise forces white) */
 h1, .stMarkdown h1 {{
     font-size: 22px !important;
     font-weight: 600 !important;
     letter-spacing: -0.01em;
-    color: {palette['text_primary']};
+    color: {palette['text_primary']} !important;
     margin: 0 0 0.25rem 0;
 }}
 h2, .stMarkdown h2 {{
     font-size: 14px !important;
     font-weight: 600 !important;
-    color: {palette['text_primary']};
+    color: {palette['text_primary']} !important;
 }}
 h3, .stMarkdown h3 {{
     font-size: 13px !important;
     font-weight: 600 !important;
-    color: {palette['text_primary']};
+    color: {palette['text_primary']} !important;
 }}
 
 /* Section eyebrow (small uppercase tracked label between rows) */
