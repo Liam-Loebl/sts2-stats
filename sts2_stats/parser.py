@@ -62,8 +62,8 @@ def parse_run(
     local_steam_id: str | None,
     source_file: str,
     imported_at: str | None = None,
-) -> tuple[dict, list[dict]]:
-    """Turn one parsed .run JSON object into (run_row, card_event_rows).
+) -> tuple[dict, list[dict], list[dict]]:
+    """Turn one parsed .run JSON object into (run_row, card_event_rows, room_event_rows).
 
     Raises RunParseError if required fields are missing or unusable.
     """
@@ -119,7 +119,8 @@ def parse_run(
     }
 
     card_events = _extract_card_events(run_id, mph, local_idx)
-    return run_row, card_events
+    room_events = _extract_room_events(run_id, mph, local_idx)
+    return run_row, card_events, room_events
 
 
 def _extract_card_events(run_id: int, mph: list, local_idx: int) -> list[dict]:
@@ -167,12 +168,54 @@ def _extract_card_events(run_id: int, mph: list, local_idx: int) -> list[dict]:
     return rows
 
 
+def _extract_room_events(run_id: int, mph: list, local_idx: int) -> list[dict]:
+    """Walk map_point_history and emit one row per room (= per map point) for the
+    local user, capturing damage / healing / gold / HP / turns."""
+    rows: list[dict] = []
+    floor_counter = 0
+    for act_index, act in enumerate(mph):
+        if not isinstance(act, list):
+            continue
+        for mp_index, mp in enumerate(act):
+            floor_counter += 1
+            if not isinstance(mp, dict):
+                continue
+            mp_type = mp.get("map_point_type") or "unknown"
+            rooms = mp.get("rooms") or []
+            first_room = rooms[0] if isinstance(rooms, list) and rooms else {}
+            if not isinstance(first_room, dict):
+                first_room = {}
+            pstats_list = mp.get("player_stats") or []
+            if not isinstance(pstats_list, list) or local_idx >= len(pstats_list):
+                continue
+            pstats = pstats_list[local_idx]
+            if not isinstance(pstats, dict):
+                continue
+            rows.append({
+                "run_id": run_id,
+                "act_index": act_index,
+                "map_point_index": mp_index,
+                "floor": floor_counter,
+                "map_point_type": mp_type,
+                "room_type": first_room.get("room_type"),
+                "encounter_model_id": first_room.get("model_id"),
+                "damage_taken": int(pstats.get("damage_taken") or 0),
+                "hp_healed": int(pstats.get("hp_healed") or 0),
+                "current_hp": pstats.get("current_hp"),
+                "max_hp": pstats.get("max_hp"),
+                "gold_gained": int(pstats.get("gold_gained") or 0),
+                "gold_spent": int(pstats.get("gold_spent") or 0),
+                "turns_taken": first_room.get("turns_taken"),
+            })
+    return rows
+
+
 def parse_file(
     path: Path,
     *,
     local_steam_id: str | None,
     imported_at: str | None = None,
-) -> tuple[dict, list[dict]]:
+) -> tuple[dict, list[dict], list[dict]]:
     """Convenience: read + parse a .run file from disk."""
     with Path(path).open("r", encoding="utf-8") as f:
         data = json.load(f)

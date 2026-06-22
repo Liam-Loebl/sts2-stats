@@ -194,6 +194,25 @@ def check_db_invariants(conn: sqlite3.Connection, r: Reporter) -> None:
     else:
         r.ok("no parse failures in import_log")
 
+    # Phase 2 room_events invariants
+    from sts2_stats.db import room_events_invariants
+    rev = room_events_invariants(conn)
+    if rev["total"] == 0:
+        r.fail("room_events table is empty (Phase 2 dashboard will have no damage data)")
+    else:
+        r.ok(f"room_events populated ({rev['total']} rows, {rev['with_damage']} with damage > 0)")
+    if rev["orphans"]:
+        r.fail(f"{rev['orphans']} room_events row(s) reference missing run_id")
+    else:
+        r.ok("every room_events row references a real run_id")
+    if rev["runs_missing_room_events"]:
+        r.fail(
+            f"{rev['runs_missing_room_events']} run(s) with acts_reached>0 have NO room_events "
+            "(parser may have failed to emit room rows)"
+        )
+    else:
+        r.ok("every reached run has at least one room_event")
+
 
 def check_coop_identification(conn: sqlite3.Connection, r: Reporter) -> None:
     r.header("Co-op local-user identification (all co-op runs)")

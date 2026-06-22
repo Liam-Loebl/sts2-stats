@@ -66,6 +66,29 @@ CREATE INDEX IF NOT EXISTS idx_cev_act    ON card_events(act_index);
 CREATE INDEX IF NOT EXISTS idx_cev_reward ON card_events(reward_event_id);
 CREATE INDEX IF NOT EXISTS idx_cev_picked ON card_events(was_picked);
 
+CREATE TABLE IF NOT EXISTS room_events (
+    id                   INTEGER PRIMARY KEY AUTOINCREMENT,
+    run_id               INTEGER NOT NULL REFERENCES runs(run_id) ON DELETE CASCADE,
+    act_index            INTEGER NOT NULL,                 -- 0-based
+    map_point_index      INTEGER NOT NULL,                 -- 0-based within act
+    floor                INTEGER NOT NULL,                 -- 1-based, cumulative
+    map_point_type       TEXT,                             -- monster/elite/boss/rest_site/...
+    room_type            TEXT,                             -- monster/elite/boss/event/...
+    encounter_model_id   TEXT,                             -- ENCOUNTER.* if present
+    damage_taken         INTEGER NOT NULL DEFAULT 0,
+    hp_healed            INTEGER NOT NULL DEFAULT 0,
+    current_hp           INTEGER,
+    max_hp               INTEGER,
+    gold_gained          INTEGER NOT NULL DEFAULT 0,
+    gold_spent           INTEGER NOT NULL DEFAULT 0,
+    turns_taken          INTEGER
+);
+
+CREATE INDEX IF NOT EXISTS idx_rev_run   ON room_events(run_id);
+CREATE INDEX IF NOT EXISTS idx_rev_act   ON room_events(act_index);
+CREATE INDEX IF NOT EXISTS idx_rev_floor ON room_events(floor);
+CREATE INDEX IF NOT EXISTS idx_rev_mpt   ON room_events(map_point_type);
+
 CREATE TABLE IF NOT EXISTS import_log (
     id          INTEGER PRIMARY KEY AUTOINCREMENT,
     source_file TEXT NOT NULL,
@@ -86,11 +109,17 @@ def connect(db_path: Path) -> sqlite3.Connection:
     return conn
 
 
-def upsert_run(conn: sqlite3.Connection, run_row: dict, card_event_rows: list[dict]) -> None:
-    """Insert-or-replace a run + its card events atomically.
+def upsert_run(
+    conn: sqlite3.Connection,
+    run_row: dict,
+    card_event_rows: list[dict],
+    room_event_rows: list[dict] | None = None,
+) -> None:
+    """Insert-or-replace a run + its card events + its room events atomically.
 
     Idempotent: re-importing the same file leaves the DB identical (the
-    ON DELETE CASCADE wipes prior card_events for the same run_id first).
+    ON DELETE CASCADE wipes prior card_events and room_events for the same
+    run_id first).
     """
     cur = conn.cursor()
     cur.execute("DELETE FROM runs WHERE run_id = ?", (run_row["run_id"],))
@@ -123,6 +152,21 @@ def upsert_run(conn: sqlite3.Connection, run_row: dict, card_event_rows: list[di
             """,
             card_event_rows,
         )
+    if room_event_rows:
+        cur.executemany(
+            """
+            INSERT INTO room_events (
+                run_id, act_index, map_point_index, floor, map_point_type,
+                room_type, encounter_model_id, damage_taken, hp_healed,
+                current_hp, max_hp, gold_gained, gold_spent, turns_taken
+            ) VALUES (
+                :run_id, :act_index, :map_point_index, :floor, :map_point_type,
+                :room_type, :encounter_model_id, :damage_taken, :hp_healed,
+                :current_hp, :max_hp, :gold_gained, :gold_spent, :turns_taken
+            )
+            """,
+            room_event_rows,
+        )
 
 
 def log_import_error(conn: sqlite3.Connection, source_file: str, error: str, when: str) -> None:
@@ -138,6 +182,23 @@ def _scalar(conn, sql, params=()):
     return conn.execute(sql, params).fetchone()[0]
 
 
+def room_events_invariants(conn) -> dict:
+    """Light invariants for the Phase 2 room_events table — used by verify.py."""
+    out = {}
+    out["total"] = _scalar(conn, "SELECT COUNT(*) FROM room_events")
+    out["with_damage"] = _scalar(conn, "SELECT COUNT(*) FROM room_events WHERE damage_taken > 0")
+    out["orphans"] = _scalar(
+        conn,
+        "SELECT COUNT(*) FROM room_events re LEFT JOIN runs r ON re.run_id = r.run_id WHERE r.run_id IS NULL",
+    )
+    out["runs_missing_room_events"] = _scalar(
+        conn,
+        "SELECT COUNT(*) FROM runs WHERE acts_reached > 0 "
+        "AND run_id NOT IN (SELECT DISTINCT run_id FROM room_events)",
+    )
+    return out
+
+
 def sanity_report(conn: sqlite3.Connection) -> dict:
     """Return key topline counts so we can eyeball them against the recon."""
     out: dict = {}
@@ -149,6 +210,7 @@ def sanity_report(conn: sqlite3.Connection) -> dict:
     out["solo"]             = _scalar(conn, "SELECT COUNT(*) FROM runs WHERE is_multiplayer = 0")
     out["card_events"]      = _scalar(conn, "SELECT COUNT(*) FROM card_events")
     out["card_picks"]       = _scalar(conn, "SELECT COUNT(*) FROM card_events WHERE was_picked = 1")
+    out["room_events"]      = _scalar(conn, "SELECT COUNT(*) FROM room_events")
     out["import_errors"]    = _scalar(conn, "SELECT COUNT(*) FROM import_log")
 
     # Topline solo-standard-non-abandoned win rate (recon expects ~53.8% = 49/91)
@@ -187,6 +249,7 @@ def print_sanity_report(report: dict) -> None:
     print(f"  Wins / Losses:           {report['wins']} / {report['losses']}")
     print(f"  Abandoned:               {report['abandoned']}")
     print(f"Card events stored:        {report['card_events']}  (picks: {report['card_picks']})")
+    print(f"Room events stored:        {report['room_events']}")
     print(f"Import errors logged:      {report['import_errors']}")
     print()
     if report["solo_std_winrate"] is not None:

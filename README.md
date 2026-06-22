@@ -2,7 +2,7 @@
 
 > A local-first stats tool for my Slay the Spire 2 runs, built to find which cards I overrate and which I should be picking more.
 
-Status: Phase 1 (data ingest + storage) complete. Phase 2 (dashboard) next.
+Status: Phases 1 and 2 (data ingest + Overview dashboard) complete. Phase 3 (Card rankings + WAR + Elo) next.
 
 ## The story
 
@@ -12,16 +12,27 @@ I've watched a lot of his videos. I wanted the same feedback loop for my own pla
 
 I'm building it because I want to use it to get better at the game, and because it's the biggest software project I've designed end-to-end so far, with all the design decisions on me (schema, statistical methodology, edge cases I didn't anticipate) instead of following a tutorial.
 
-## What's live right now (Phase 1)
+## What's live right now (Phases 1 + 2)
+
+**Data layer (Phase 1):**
 
 - Auto-detects the StS2 save folder under `%APPDATA%`. Same code works on my laptop and my desktop with no configuration.
-- Parses every `.run` JSON file (150 runs so far) and loads them into a local SQLite database.
+- Parses every `.run` JSON file (150 runs so far) into a local SQLite database with three tables: `runs`, `card_events` (every option of every card reward, with the floor it was offered), and `room_events` (per-room damage / healing / gold / turn count).
 - Handles both schema versions present in my local runs (v8 and v9). The game has continued to bump the save schema in later patches; covering newer schemas is on the to-do list as I encounter them.
 - Co-op aware: each co-op run is stored with a flag, and the local player is identified by matching the Steam ID in the save-folder path against the player IDs inside the run.
 - Idempotent: re-running the import is a no-op for runs already in the database.
-- Verified end-to-end against the full corpus (150 runs, 9,882 card events). Every topline number in the sanity report matches the counts I had derived by hand from the raw JSON before writing the importer.
+- Verified end-to-end against the full corpus (150 runs, 9,882 card events, 4,906 room events). Every topline number matches the counts I derived by hand from the raw JSON before writing the importer.
 
-The dashboard comes next.
+**Overview dashboard (Phase 2):**
+
+- Streamlit app (`app.py`) that opens in a browser and re-imports new runs automatically on startup.
+- Sidebar filters: solo / co-op / both, standard / all game modes, include or exclude abandoned, minimum ascension, character.
+- Topline row: total runs, win rate, best consecutive-win streak, most-played ascension.
+- Five character tiles with per-character win rate and run count.
+- A rolling 20-run win-rate trend line and a grouped bar chart of average damage taken per act per character.
+- Dark, ember-themed visual style tuned to feel like the game itself.
+
+Phase 3 — card rankings with WAR + Elo — comes next.
 
 ## The interesting parts
 
@@ -81,22 +92,24 @@ A few design choices worth flagging:
 ## Roadmap
 
 - [x] **Phase 1 — Ingest.** Parser, SQLite schema, idempotent importer, sanity-report CLI.
-- [ ] **Phase 2 — Overview dashboard.** Themed in-browser dashboard: total runs, per-character tiles, win-rate trends, damage per act.
+- [x] **Phase 2 — Overview dashboard.** Streamlit app with the topline numbers, five character tiles, rolling win-rate trend, damage-per-act chart, and a filter sidebar.
 - [ ] **Phase 3 — Card rankings board.** Pick%, win%, WAR, Elo, all sortable, sample size shown, shrinkage applied to low-N cards.
 - [ ] **Phase 4 — Per-card and per-character detail pages.** WAR by act, Elo over time, Elo-vs-WAR scatter.
 - [ ] **Phase 5 — Live refresh + the rest of the game.** Folder watcher so the dashboard updates as runs finish; relic and potion analytics on the same metric framework.
 
 ## Setup
 
-Requires Python 3.10+ and a Windows machine where you've launched Slay the Spire 2 at least once (so the run-history files are present locally). No third-party dependencies for Phase 1; everything uses the standard library.
+Requires Python 3.10+ and a Windows machine where you've launched Slay the Spire 2 at least once (so the run-history files are present locally).
 
 ```bash
 git clone https://github.com/Liam-Loebl/sts2-stats.git
 cd sts2-stats
-python import_all.py
+pip install -r requirements.txt
+python import_all.py        # one-time CLI import + sanity report
+streamlit run app.py        # opens the dashboard at localhost:8501
 ```
 
-That's the whole setup. `import_all.py` auto-discovers your StS2 history folder, builds `sts2_stats.sqlite` next to the script, and ends with a sanity report. Re-run it any time; only new runs are ingested.
+`import_all.py` auto-discovers your StS2 history folder, builds `sts2_stats.sqlite` next to the script, and ends with a sanity report. `streamlit run app.py` opens the Overview dashboard in your browser; the app also re-imports automatically on launch and exposes a "Refresh data" button in the sidebar for mid-session updates.
 
 The `.run` JSON files themselves are not in this repo; they live in your local `%APPDATA%`.
 
@@ -111,13 +124,18 @@ The `.run` JSON files themselves are not in this repo; they live in your local `
 
 ```
 sts2-stats/
-├── import_all.py        one-command entrypoint
+├── app.py               Streamlit Overview dashboard (Phase 2)
+├── import_all.py        one-command CLI import + sanity report
 ├── verify.py            invariant + cross-source checks (exit non-zero on failure)
+├── requirements.txt     Python deps (just streamlit)
+├── .streamlit/
+│   └── config.toml      dark ember-themed dashboard
 ├── sts2_stats/          the package
 │   ├── paths.py         save-folder auto-detection
-│   ├── parser.py        .run JSON -> normalized records
+│   ├── parser.py        .run JSON -> normalized records (runs + card + room events)
 │   ├── db.py            SQLite schema + sanity report
-│   └── importer.py      idempotent upsert
+│   ├── importer.py      idempotent upsert
+│   └── queries.py       SQL backend for the dashboard (Phase 2)
 ├── SPEC.md              full design doc
 └── sts2_stats.sqlite    generated locally; not checked in
 ```
