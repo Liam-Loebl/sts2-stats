@@ -10,6 +10,14 @@ What it checks:
   - Random spot-check: 5 runs' worth of top-level fields re-derived from source
     JSON, every field compared against the DB row
   - Idempotency: re-running the importer leaves run/card-event counts unchanged
+  - Tone scan on README.md and SPEC.md for common AI-prose tells: em-dash
+    overuse, "not just / not only X" negative-parallelism, promotional vocab
+    (robust, leverage, delve, seamlessly, comprehensive, ...), meta-commentary
+    ("it's worth noting", "notably,", ...), inflated symbolism ("stands as a
+    testament", "at the heart of", ...), conjunctive sentence-starters
+    ("Moreover,", "Furthermore,", ...), and a heuristic for rule-of-three
+    cadence. Hits are emitted as soft NOTEs only — tone is subjective, so
+    they don't fail the run; they're just a reminder to re-read the line.
 
 Use after every import (or after a game patch ships a new save-schema version)
 to confirm nothing has silently drifted. Exits 0 if all checks pass, 1 if any fail.
@@ -17,6 +25,7 @@ to confirm nothing has silently drifted. Exits 0 if all checks pass, 1 if any fa
 from __future__ import annotations
 
 import json
+import re
 import sqlite3
 import sys
 from pathlib import Path
@@ -376,6 +385,117 @@ def check_idempotency(r: Reporter) -> None:
         r.note(f"re-import logged {result['errors']} parse error(s)")
 
 
+def _strip_markdown_code(text: str) -> str:
+    """Drop fenced code blocks and inline `code` so the tone scan doesn't
+    false-positive on identifiers like 'leverage' or 'robust' that happen to
+    appear inside code or commands."""
+    text = re.sub(r"```.*?```", "", text, flags=re.DOTALL)
+    text = re.sub(r"`[^`\n]+`", "", text)
+    return text
+
+
+# Word/phrase inventories for the tone scan. Lifted from the patterns the
+# README audit (and the anthropic-skills:humanizer skill) flagged as common
+# AI-prose tells. Tweak freely — edit this list and re-run verify.py.
+_PROMO_VOCAB = [
+    "robust", "leverage", "delve", "elegantly", "seamlessly",
+    "comprehensive", "powerful", "meticulous", "foster", "illuminate",
+    "holistic", "multifaceted", "nuanced", "groundbreaking",
+    "cutting-edge", "state-of-the-art", "underscores",
+]
+_META_COMMENTARY = [
+    "it's worth noting", "it is worth noting", "it's important to note",
+    "it's important to remember", "notably,", "interestingly,",
+    "importantly,", "of note,",
+]
+_INFLATED_PHRASES = [
+    "stands as a testament", "speaks volumes", "at the heart of",
+    "at the intersection of", "captures the essence", "paints a picture",
+    "epitomizes", "embodies the spirit",
+]
+_CONJ_STARTERS = (
+    "Moreover,", "Furthermore,", "Additionally,",
+    "Consequently,", "Thus,", "Hence,",
+)
+
+
+def _scan_tone(text: str) -> list[str]:
+    """Return human-readable hit descriptions for one document's prose."""
+    text = _strip_markdown_code(text)
+    low = text.lower()
+    hits: list[str] = []
+
+    # 1. Em-dash overuse: any paragraph with 3+ em-dashes.
+    for para in text.split("\n\n"):
+        n = para.count("—")
+        if n >= 3:
+            hits.append(f"em-dash overuse — {n} em-dashes in one paragraph")
+
+    # 2. Negative-parallelism: 'not just X' / 'not only X' phrasing.
+    for m in re.finditer(r"(?i)\bnot (just|only)\b[^.\n]{0,80}", text):
+        snippet = m.group(0).strip().replace("\n", " ")
+        hits.append(f"negative-parallelism — '{snippet[:70]}'")
+
+    # 3. Promotional / AI vocab.
+    for word in _PROMO_VOCAB:
+        for m in re.finditer(rf"\b{re.escape(word)}\b", text, flags=re.IGNORECASE):
+            ctx = text[max(0, m.start() - 25): m.end() + 25].replace("\n", " ")
+            hits.append(f"promo vocab '{m.group(0)}' — '...{ctx.strip()}...'")
+
+    # 4. Meta-commentary openers.
+    for phrase in _META_COMMENTARY:
+        idx = low.find(phrase)
+        if idx >= 0:
+            ctx = text[max(0, idx - 10): idx + len(phrase) + 50].replace("\n", " ")
+            hits.append(f"meta-commentary '{phrase}' — '...{ctx.strip()}...'")
+
+    # 5. Inflated symbolism / vague-evocative phrases.
+    for phrase in _INFLATED_PHRASES:
+        idx = low.find(phrase)
+        if idx >= 0:
+            ctx = text[max(0, idx - 20): idx + len(phrase) + 40].replace("\n", " ")
+            hits.append(f"inflated phrase '{phrase}' — '...{ctx.strip()}...'")
+
+    # 6. Conjunctive sentence-starters at the start of a line.
+    for line in text.split("\n"):
+        first = line.lstrip()
+        for word in _CONJ_STARTERS:
+            if first.startswith(word):
+                hits.append(f"conjunctive starter '{word.rstrip(',')}' — '{first[:70]}'")
+                break
+
+    # 7. Rule-of-three heuristic: paragraphs with 3+ ', and ' constructions.
+    for para in text.split("\n\n"):
+        n = len(re.findall(r",\s+and\s+", para))
+        if n >= 3:
+            hits.append(f"rule-of-three cadence — {n} ', and' lists in one paragraph")
+
+    return hits
+
+
+def check_tone(r: Reporter, files: list[Path], cap: int = 25) -> None:
+    r.header("Tone scan: AI-prose tells in markdown docs (soft warnings)")
+    all_hits: list[str] = []
+    scanned = 0
+    for f in files:
+        if not f.exists():
+            r.note(f"{f.name}: file not found — skipping")
+            continue
+        scanned += 1
+        for hit in _scan_tone(f.read_text(encoding="utf-8")):
+            all_hits.append(f"{f.name}: {hit}")
+
+    for hit in all_hits[:cap]:
+        r.note(hit)
+    if len(all_hits) > cap:
+        r.note(f"... and {len(all_hits) - cap} more (capped at {cap})")
+
+    if all_hits:
+        r.ok(f"tone scan complete — {len(all_hits)} note(s) above for review")
+    else:
+        r.ok(f"no AI-tone tells found in {scanned} file(s)")
+
+
 def main() -> int:
     if not DB_PATH.exists():
         print(f"ERROR: {DB_PATH} not found. Run `python import_all.py` first.")
@@ -393,6 +513,7 @@ def main() -> int:
     finally:
         conn.close()
     check_idempotency(r)
+    check_tone(r, [DB_PATH.parent / "README.md", DB_PATH.parent / "SPEC.md"])
 
     return r.summary()
 
