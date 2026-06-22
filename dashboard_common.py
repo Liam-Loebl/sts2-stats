@@ -146,21 +146,15 @@ def render_sidebar(mode: str, palette: dict) -> dict:
     include_abandoned = st.sidebar.checkbox("Include abandoned runs", value=False, key="_abandoned_cb")
     ascension_min = st.sidebar.slider("Minimum ascension", 0, 10, 0, key="_ascension_slider")
 
-    st.sidebar.markdown("<hr>", unsafe_allow_html=True)
-
-    character_label = st.sidebar.selectbox(
-        "Character",
-        ["All"] + [c.replace("CHARACTER.", "") for c in CHARACTERS],
-        index=0, key="_character_select",
-    )
-    character_value = None if character_label == "All" else f"CHARACTER.{character_label}"
-
     filters = {
         "mode": mode_map[mode_label],
         "game_mode": game_mode_map[game_mode_label],
         "include_abandoned": include_abandoned,
         "ascension_min": ascension_min,
-        "character": character_value,
+        # Character is chosen per-page: Card Rankings has its own Overall / per-
+        # character control, and the Overview always shows all five characters.
+        # (A second sidebar Character control silently diverged from the board's.)
+        "character": None,
     }
 
     st.sidebar.markdown("<hr>", unsafe_allow_html=True)

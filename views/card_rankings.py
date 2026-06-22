@@ -1,9 +1,9 @@
-"""Card Rankings board — pick%, win%, WAR, and Elo per card.
+"""Card Rankings board — pick%, win%, WAR, and Elo-vs-Skip per card.
 
 The statistical engine lives in sts2_stats/rankings.py (methodology locked
-in SPEC §5.3/§5.4/§5.4a). This page is presentation only: controls, the
-WAR-vs-Elo "overrated / underrated" insight, and the sortable table with
-green->red WAR coloring and honest small-sample handling.
+in SPEC §5.3/§5.4/§5.4a). This page is presentation only: the filter/sort
+controls, a card search, and the sortable table with green->red WAR coloring,
+per-character identity tint, and honest small-sample handling.
 """
 from __future__ import annotations
 
@@ -113,13 +113,19 @@ shown = cards_shown + skip_rows  # Skip rows are exempt from the offers gate
 st.markdown(
     """
 <style>
+.cr-caption { font-size: 12px; color: var(--cr-text2); margin: -0.45rem 0 0.7rem 0;
+  font-variant-numeric: tabular-nums; }
 .cr-table { max-height: 600px; overflow: auto; border: 1px solid var(--cr-border);
-  border-radius: 12px; margin-top: 2px; }
+  border-radius: 12px; margin-top: 2px; box-shadow: var(--cr-shadow); }
 .cr-table table { width: 100%; margin: 0; }
+.cr-table tbody tr:hover td { background-color: var(--cr-hover); }
 .cr-table::-webkit-scrollbar { width: 10px; height: 10px; }
 .cr-table::-webkit-scrollbar-thumb { background: var(--cr-border); border-radius: 6px; }
 </style>
-""".replace("var(--cr-border)", palette["border"]),
+""".replace("var(--cr-border)", palette["border"])
+   .replace("var(--cr-text2)", palette["text_secondary"])
+   .replace("var(--cr-hover)", palette["accent_muted"])
+   .replace("var(--cr-shadow)", palette["shadow"]),
     unsafe_allow_html=True,
 )
 
@@ -134,10 +140,11 @@ search = st.text_input(
 ).strip().lower()
 display = [r for r in shown if not search or search in r["card"].lower()]
 _n_disp = sum(1 for r in display if not r.get("is_skip"))
-dc.eyebrow(
-    f"All cards ({_n_disp} shown · offered ≥ {min_offers}×) + a Skip line per act"
-    + (f" · matching '{search}'" if search else "")
-)
+dc.eyebrow("All cards")
+_caption = f"{_n_disp} shown · offered {min_offers}+ times · Skip line per act"
+if search:
+    _caption += f" · matching “{search}”"
+st.markdown(f'<div class="cr-caption">{_caption}</div>', unsafe_allow_html=True)
 
 _sort_key = {
     "WAR": ("war", False),
@@ -159,32 +166,31 @@ def _num_or_nan(v):
     return v if v is not None else float("nan")
 
 
+show_char = board_character is None  # the Char column is redundant when filtered to one
 table = []
 for r in shown_sorted:
-    table.append({
-        "Card": r["card"],
-        "Char": r["character_name"],
-        "Offers": _num_or_nan(r["offers"]),
-        "Picks": _num_or_nan(r["picks"]),
-        "Pick %": r["pick_rate"],
-        "Win %": _num_or_nan(r["winrate_shrunk"]),
-        "WAR": _num_or_nan(r["war"]),
-        "Elo": round(r["elo"]) if r["elo"] is not None else float("nan"),
-        "vs Skip": round(r["elo_vs_skip"]) if r["elo_vs_skip"] is not None else float("nan"),
-        "Elo N": r["elo_n"],
-    })
+    rowd = {"Card": r["card"]}
+    if show_char:
+        rowd["Char"] = r["character_name"]
+    rowd["Offers"] = _num_or_nan(r["offers"])
+    rowd["Pick %"] = r["pick_rate"]
+    rowd["Win %"] = _num_or_nan(r["winrate_shrunk"])
+    rowd["WAR"] = _num_or_nan(r["war"])
+    rowd["vs Skip"] = round(r["elo_vs_skip"]) if r["elo_vs_skip"] is not None else float("nan")
+    table.append(rowd)
 
 df = pd.DataFrame(table)
 
 
 def _war_bg(v: float) -> str:
-    """Diverging green(+)/red(-) background, centered at 0, clamped at ±0.15."""
+    """Diverging good/bad background from the palette (so it matches the metric
+    deltas in both modes), centered at 0, clamped at ±0.15."""
     if v is None or (isinstance(v, float) and math.isnan(v)):
         return ""
     m = max(-1.0, min(1.0, v / 0.15))
-    alpha = 0.10 + 0.32 * abs(m)
-    rgb = "63,185,80" if m >= 0 else "248,81,73"
-    return f"background-color: rgba({rgb},{alpha:.3f})"
+    alpha = 0.10 + 0.30 * abs(m)
+    r, g, b = _hex_to_rgb(palette["positive"] if m >= 0 else palette["negative"])
+    return f"background-color: rgba({r}, {g}, {b}, {alpha:.3f})"
 
 
 def _pct(v) -> str:
@@ -218,13 +224,20 @@ _CHAR_RGB = {
 
 
 def _char_row_bg(row, alpha: float) -> list:
-    """Tint the Card and Char cells with the row's character identity color."""
-    rgb = _CHAR_RGB.get(row["Char"])
+    """Tint the Card/Char cells with the character identity color. Skip rows are
+    the baseline, not a card: italicize their label and don't tint them."""
     styles = ["" for _ in row]
+    if str(row["Card"]).startswith("Skip"):
+        styles[row.index.get_loc("Card")] = (
+            f"font-style: italic; color: {palette['text_secondary']};"
+        )
+        return styles
+    rgb = _CHAR_RGB.get(row["Char"]) if "Char" in row.index else None
     if rgb:
         bg = f"background-color: rgba({rgb[0]}, {rgb[1]}, {rgb[2]}, {alpha})"
         for col in ("Card", "Char"):
-            styles[row.index.get_loc(col)] = bg
+            if col in row.index:
+                styles[row.index.get_loc(col)] = bg
     return styles
 
 
@@ -240,10 +253,7 @@ styler = (
         "Win %": _pct,
         "WAR": _war_fmt,
         "Offers": _int_or_dash,
-        "Picks": _int_or_dash,
-        "Elo": _int_or_dash,
         "vs Skip": _signed_or_dash,
-        "Elo N": "{:.0f}",
     })
 )
 
@@ -251,26 +261,28 @@ styler = (
 # static config.toml theme (dark) and can't be re-themed per the light/dark
 # toggle, so we render the Styler to HTML and color it from the active palette.
 # Sorting is via the "Sort by" control above; column meanings are in the expander.
-_num_cols = ["Offers", "Picks", "Pick %", "Win %", "WAR", "Elo", "vs Skip", "Elo N"]
+_num_cols = [c for c in ("Offers", "Pick %", "Win %", "WAR", "vs Skip") if c in df.columns]
+_left_th = "thead th.col0" + (", thead th.col1" if show_char else "")
 styler = (
     styler
     .hide(axis="index")
     .set_properties(subset=_num_cols, **{"text-align": "right"})
     .set_table_styles([
         {"selector": "", "props": [
-            ("width", "100%"), ("border-collapse", "collapse"), ("font-size", "12.5px"),
+            ("width", "100%"), ("border-collapse", "collapse"), ("font-size", "13px"),
             ("background-color", palette["surface"]), ("color", palette["text_primary"]),
         ]},
         {"selector": "thead th", "props": [
             ("position", "sticky"), ("top", "0"), ("z-index", "1"),
             ("background-color", palette["surface"]), ("color", palette["text_secondary"]),
-            ("font-weight", "600"), ("font-size", "10.5px"), ("text-transform", "uppercase"),
+            ("font-weight", "600"), ("font-size", "11px"), ("text-transform", "uppercase"),
             ("letter-spacing", "0.04em"), ("text-align", "right"), ("white-space", "nowrap"),
-            ("padding", "10px 12px"), ("border-bottom", f"1px solid {palette['border']}"),
+            ("padding", "11px 12px"), ("border-bottom", f"1px solid {palette['border']}"),
+            ("box-shadow", "0 3px 6px rgba(0,0,0,0.12)"),
         ]},
-        {"selector": "thead th.col0, thead th.col1", "props": [("text-align", "left")]},
+        {"selector": _left_th, "props": [("text-align", "left")]},
         {"selector": "tbody td", "props": [
-            ("padding", "7px 12px"), ("white-space", "nowrap"),
+            ("padding", "8px 12px"), ("white-space", "nowrap"),
             ("font-variant-numeric", "tabular-nums"),
             ("border-bottom", f"1px solid {palette['border']}"),
         ]},
@@ -314,8 +326,8 @@ cards with few matches and shown only for cards that competed, so a single lucky
 pick can't headline.
 
 **The gap is the point.** High *vs Skip* + negative *WAR* = a card I overrate;
-positive *WAR* + negative *vs Skip* = one I underrate. Both lists are at the top
-of this page.
+positive *WAR* + negative *vs Skip* = one I underrate. Sort by WAR and scan the
+*vs Skip* column — the cards where the two disagree are the ones worth a look.
 
 Sample sizes are still small ({meta['n_runs']} runs), so **N is shown on every
 card** and the cards below the *Minimum times offered* bar are hidden rather than
