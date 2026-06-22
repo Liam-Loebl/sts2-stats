@@ -30,6 +30,7 @@ What it checks:
       16. AI flourishes (paints a picture, in essence, crucially,, ...)
       17. cliché openers ('in today's fast-paced world', 'long story short')
       18. 'whilst' (prefer 'while')
+      19. italic-for-emphasis density (3+ *italic* spans per section)
     Hits are emitted as soft NOTEs (the run still passes) plus a per-category
     summary line, so it's easy to spot which pattern is dominating. The word
     and phrase lists live at the top of the relevant section in this file —
@@ -594,6 +595,18 @@ def _scan_tone(text: str) -> list[str]:
     for m in re.finditer(r"\bwhilst\b", text, flags=re.IGNORECASE):
         ctx = text[max(0, m.start() - 25): m.end() + 25].replace("\n", " ")
         hits.append(f"'whilst' (prefer 'while') — '...{ctx.strip()}...'")
+
+    # 19. Italic-for-emphasis density: 3+ *italic* or _italic_ spans per section.
+    # Strip bold first so we don't double-count **...** as italic.
+    sections = re.split(r"(?m)^#+\s.*$", text)
+    for sec in sections:
+        sec_no_bold = re.sub(r"\*\*[^*\n]+\*\*", "", sec)
+        sec_no_bold = re.sub(r"__[^_\n]+__", "", sec_no_bold)
+        n_star = len(re.findall(r"(?<![\*\w])\*([^\*\n]+?)\*(?![\*\w])", sec_no_bold))
+        n_under = len(re.findall(r"(?<![\w_])_([^_\n]+?)_(?![\w_])", sec_no_bold))
+        n = n_star + n_under
+        if n >= 3:
+            hits.append(f"italic density — {n} *italic* spans in one section")
 
     return hits
 
