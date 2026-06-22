@@ -21,6 +21,7 @@ from theme import CHARACTER_RANGE
 
 palette = st.session_state["palette"]
 filters = st.session_state["filters"]
+mode = st.session_state["mode"]
 
 dc.page_header("Card Rankings")
 
@@ -279,20 +280,23 @@ _CHAR_RGB = {
 }
 
 
-def _char_row_bg(row) -> list:
+def _char_row_bg(row, alpha: float) -> list:
     """Tint the Card and Char cells with the row's character identity color."""
     rgb = _CHAR_RGB.get(row["Char"])
     styles = ["" for _ in row]
     if rgb:
-        bg = f"background-color: rgba({rgb[0]}, {rgb[1]}, {rgb[2]}, 0.22)"
+        bg = f"background-color: rgba({rgb[0]}, {rgb[1]}, {rgb[2]}, {alpha})"
         for col in ("Card", "Char"):
             styles[row.index.get_loc(col)] = bg
     return styles
 
 
+# Character tint: stronger in light mode (over white), a touch lighter in dark
+# mode so it reads as the character's color, like the Overview damage-chart bars.
+_char_alpha = 0.55 if mode == "light" else 0.45
 styler = (
     df.style
-    .apply(_char_row_bg, axis=1)
+    .apply(lambda row: _char_row_bg(row, _char_alpha), axis=1)
     .map(_war_bg, subset=["WAR"])
     .format({
         "Pick %": _pct,

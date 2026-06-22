@@ -10,6 +10,7 @@ runs_cache/
 
 # Local machine-specific config (kept separate from the project's settings.json)
 .claude/settings.local.json
+.claude/launch.json
 
 # Python
 __pycache__/

@@ -123,11 +123,31 @@ ul[data-baseweb="menu"] li { color: TEXT !important; }
 .stApp div[data-testid="stCheckbox"] label,
 .stApp div[data-testid="stCheckbox"] label p { color: TEXT !important; }
 
-/* Radio circle + checkbox box */
-.stApp div[data-baseweb="radio"] div:first-child,
-.stApp div[data-baseweb="checkbox"] div:first-child {
+/* Radio circle: white + soft border when unselected, accent when selected.
+   (The checked state can't be reached from the input, so we select the circle
+   of a checked radio via :has().) The inner mark div is kept transparent except
+   on the selected radio. */
+.stApp [data-baseweb="radio"] > div:first-child {
     background-color: SURFACE !important;
     border-color: TEXT2 !important;
+}
+.stApp [data-baseweb="radio"] > div:first-child > div { background-color: transparent !important; }
+.stApp [data-baseweb="radio"]:has(input:checked) > div:first-child {
+    background-color: ACCENT !important;
+    border-color: ACCENT !important;
+}
+.stApp [data-baseweb="radio"]:has(input:checked) > div:first-child > div {
+    background-color: SURFACE !important;
+}
+
+/* Checkbox box is a <span>, not a div — same treatment */
+.stApp [data-baseweb="checkbox"] > span:first-child {
+    background-color: SURFACE !important;
+    border-color: TEXT2 !important;
+}
+.stApp [data-baseweb="checkbox"]:has(input:checked) > span:first-child {
+    background-color: ACCENT !important;
+    border-color: ACCENT !important;
 }
 
 /* Slider rail + thumb + value labels */
