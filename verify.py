@@ -392,6 +392,121 @@ def check_against_source(conn: sqlite3.Connection, r: Reporter, sample_size: int
             r.ok(f"run {run_id}: all 12 fields match source")
 
 
+def check_rankings_engine(conn: sqlite3.Connection, r: Reporter) -> None:
+    r.header("Phase 3 rankings engine (WAR / Elo invariants)")
+    import math as _m
+
+    from sts2_stats import rankings
+
+    filters = {
+        "mode": "solo", "game_mode": "standard", "include_abandoned": False,
+        "ascension_min": 0, "character": None,
+    }
+    try:
+        res = rankings.compute_rankings(conn, filters)
+    except Exception as e:  # noqa: BLE001 — surface any engine crash as a FAIL
+        r.fail(f"compute_rankings raised: {e!r}")
+        return
+
+    rows = res["rows"]
+    meta = res["meta"]
+    if not rows:
+        r.note("no in-scope cards for solo/standard/non-abandoned — skipping engine checks")
+        return
+    r.ok(
+        f"engine ran ({meta['n_cards']} cards over {meta['n_events']} in-scope "
+        f"options, {meta['n_runs']} runs)"
+    )
+
+    # 1. n_events matches an independent in-scope count (scope = §5.4a).
+    indep = conn.execute(
+        "SELECT COUNT(*) FROM card_events ce JOIN runs r ON r.run_id = ce.run_id "
+        "WHERE r.is_multiplayer = 0 AND r.game_mode = 'standard' AND r.was_abandoned = 0 "
+        "AND ce.source_type IN ('monster','elite','boss','ancient')"
+    ).fetchone()[0]
+    if meta["n_events"] == indep:
+        r.ok(f"in-scope event count matches independent query ({indep})")
+    else:
+        r.fail(f"engine n_events {meta['n_events']} != independent in-scope count {indep}")
+
+    # 2. WAR baseline never missing: war_n == picks for every card. Each pick's
+    #    own run reached the pick floor, so the floor-conditional baseline always
+    #    has support — if this ever fails the baseline silently dropped a pick.
+    bad = [x for x in rows if x["war_n"] != x["picks"]]
+    if bad:
+        r.fail(f"{len(bad)} card(s) have war_n != picks (a pick lost its baseline)")
+    else:
+        r.ok("WAR baseline present for every pick (war_n == picks on every card)")
+
+    # 3. Elo zero-sum per character: every match is zero-sum and all entities
+    #    start at 1500, so deviations from 1500 (cards + Skip) must cancel per pool.
+    #    A card that never competed has elo=None but a true pool rating of exactly
+    #    ELO_INITIAL (it never moved), so it contributes 0.
+    init = meta["elo_initial"]
+
+    def _rating(x: dict) -> float:
+        return x["elo"] if x["elo"] is not None else init
+
+    dev: dict[str, float] = {}
+    for x in rows:
+        dev[x["character"]] = dev.get(x["character"], 0.0) + (_rating(x) - init)
+    for char, skip in meta["skip_elo"].items():
+        dev[char] = dev.get(char, 0.0) + (skip - init)
+    worst = max((abs(v) for v in dev.values()), default=0.0)
+    if worst < 1e-6:
+        r.ok(f"Elo zero-sum per character (worst residual {worst:.1e})")
+    else:
+        r.fail(f"Elo not zero-sum (worst residual {worst:.3e}) — pairwise update leaking rating")
+
+    # 4. Determinism: a second run yields identical Elo.
+    res2 = rankings.compute_rankings(conn, filters)
+    elo2 = {(x["card_id"], x["character"]): _rating(x) for x in res2["rows"]}
+    drift = max(
+        (abs(_rating(x) - elo2.get((x["card_id"], x["character"]), _rating(x))) for x in rows),
+        default=0.0,
+    )
+    if drift < 1e-9:
+        r.ok("engine deterministic across two runs (Elo identical)")
+    else:
+        r.fail(f"engine non-deterministic — Elo drifted by up to {drift:.2e}")
+
+    # 5. Elo N never exceeds the distinct in-scope reward groups a card appears in.
+    #    Regression guard for the duplicate-option-row inflation bug: before the
+    #    Elo-local dedup, a card_id repeated within one reward group counted as
+    #    multiple matches, pushing elo_n above its true group participation.
+    dgrp = dict(conn.execute(
+        "SELECT ce.card_id, COUNT(DISTINCT ce.reward_event_id) "
+        "FROM card_events ce JOIN runs r ON r.run_id = ce.run_id "
+        "WHERE r.is_multiplayer = 0 AND r.game_mode = 'standard' AND r.was_abandoned = 0 "
+        "AND ce.source_type IN ('monster','elite','boss','ancient') "
+        "GROUP BY ce.card_id"
+    ).fetchall())
+    inflated = [x for x in rows if x["elo_n"] > dgrp.get(x["card_id"], 0)]
+    if inflated:
+        ex = inflated[0]
+        r.fail(
+            f"{len(inflated)} card(s) have elo_n above their distinct reward-group count "
+            f"(duplicate-option inflation): e.g. {ex['card']} elo_n={ex['elo_n']} "
+            f"> {dgrp.get(ex['card_id'], 0)} groups"
+        )
+    else:
+        r.ok("Elo N within each card's distinct reward-group count (no duplicate inflation)")
+
+    # 6. Value ranges: pick rates in [0,1]; every present Elo/WAR value finite.
+    problems: list[str] = []
+    for x in rows:
+        if not (0.0 <= x["pick_rate"] <= 1.0):
+            problems.append(f"{x['card']} pick_rate={x['pick_rate']}")
+        for field in ("elo", "elo_vs_skip", "war"):
+            v = x[field]
+            if v is not None and not _m.isfinite(v):
+                problems.append(f"{x['card']} non-finite {field}")
+    if problems:
+        r.fail(f"{len(problems)} value-range problem(s): {problems[:3]}")
+    else:
+        r.ok("pick_rate in [0,1] and all present Elo/WAR values finite")
+
+
 def check_idempotency(r: Reporter) -> None:
     r.header("Idempotency: re-import doesn't change counts")
 
@@ -695,6 +810,7 @@ def main() -> int:
         check_coop_identification(conn, r)
         check_floor_math(conn, r)
         check_against_source(conn, r)
+        check_rankings_engine(conn, r)
     finally:
         conn.close()
     check_idempotency(r)

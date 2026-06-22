@@ -253,6 +253,24 @@ the Elo pool**. They stay in WAR's "win-when-picked" aggregate (every
 picked card still gets a contribution), but the Elo update skips them.
 One-line filter. Revisit when there's more data.
 
+**Implemented (Phase 3).** The engine is `sts2_stats/rankings.py`
+(`compute_rankings(conn, filters, act=None)`) — the floor-conditional WAR
+baseline, multi-way summed Elo with Skip as a per-character rated entity,
+and the scope rules above. Tunable constants: WAR shrinkage `k = 10` phantom
+replacement-level (lift-0) picks; win%-when-picked beta-binomial prior
+strength `m = 10` toward the filtered win rate; Elo `K = 24`, initial 1500.
+Correctness is pinned by an independent brute-force WAR recomputation (exact
+match), an Elo zero-sum-per-character invariant, and a determinism check, all
+wired into `verify.py`. The UI is the Card Rankings page
+(`views/card_rankings.py`).
+
+**Known limitation (deferred).** `reward_event_id = run_id:act_index:map_point_index`
+can merge multiple reward screens at one map point into a single group, so a
+card_id can appear more than once in a group. Elo dedups per group (Elo-local, so
+a card plays each tournament once and its Elo N counts distinct groups), but
+`offers` / `pick%` still count every option row — ~1.5% of in-scope groups are
+affected. The clean fix is parser-side screen separation, deferred to a later pass.
+
 ### 5.5 The headline insight: WAR vs Elo
 WAR = what *wins*; Elo = what I *prefer*. The gap is the gold:
 - High Elo + low WAR ⇒ overrated (I keep taking it; it doesn't win).
@@ -324,7 +342,7 @@ Priority order (build top-down):
 
 Parked for later: a run-by-run timeline browser (replay a run's picks/skips/deck/map as data).
 
-**Multi-page restructure (deferred):** Phase 2's single-page Overview is already starting to feel crowded with the topline + character tiles + two charts. Once Phase 3 (card rankings) and Phase 4 (per-card / per-character detail) land, the page will be too long to scroll comfortably. Plan: switch to Streamlit's multipage app pattern (a `pages/` directory with one script per view, automatic sidebar nav). Trigger: user explicitly asks, or the Overview scroll length crosses roughly three viewports.
+**Multi-page restructure (done, Phase 3):** the app is now a Streamlit multipage app via `st.navigation`. `app.py` is the router + shared chrome (theme, sidebar filters, import-on-load); each view under `views/` renders one page (Overview, Card Rankings), and shared helpers live in `dashboard_common.py`. The Phase 4 per-card / per-character detail pages slot in as additional views.
 
 **Aesthetic:** lean thematic (StS2-flavored: dark, gritty), but refine the look after there's
 a working build to react to. Start functional + themeable; escalate to a more custom UI only if I want it.
@@ -350,11 +368,11 @@ has the full history locally.
 
 ## 9. Build order (each phase usable on its own)
 
-1. **Foundation**: parser + SQLite schema (incl. `reward_event_id` grouping) + import all current runs.
+1. **Foundation** (done): parser + SQLite schema (incl. `reward_event_id` grouping) + import all current runs.
    Then sanity-check together: total runs, win rate, runs per character, multiplayer/custom counts.
-2. **Overview dashboard**: first thing to open and react to.
-3. **Card rankings board**: pick%, win%, WAR, Elo (sortable; N shown; shrinkage; coloring).
-4. **Per-card / per-character detail pages.**
+2. **Overview dashboard** (done): first thing to open and react to.
+3. **Card rankings board** (done): pick%, win%, WAR, Elo (sortable; N shown; shrinkage; coloring).
+4. **Per-card / per-character detail pages** (next).
 5. **Auto-update watcher.**
 6. **Relics / potions + polish + stretch features.**
 

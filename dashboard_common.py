@@ -1,0 +1,286 @@
+"""Shared dashboard scaffolding for the multipage Streamlit app.
+
+The app moved to Streamlit's `st.navigation` multipage pattern in Phase 3:
+`app.py` is the router + shared chrome (theme, CSS, sidebar filters,
+import-on-load), and each view under `views/` renders one page's content.
+Everything both pages need lives here so neither the theme nor the filter
+sidebar drifts between pages.
+
+Public API:
+  apply_theme()              -> (mode, palette); resolves theme, injects CSS, registers Altair
+  import_on_load()           -> run the idempotent import once per session if the DB is stale
+  render_sidebar(mode, palette) -> filters dict (theme toggle + filters + refresh + last-import)
+  connect_db()               -> open sqlite connection to the local DB
+  page_header(title)         -> the title + last-sync strip at the top of a view
+  eyebrow / metric_card / character_tile -> shared render helpers
+  CHARACTERS                 -> canonical roster order (positional with theme.CHARACTER_RANGE)
+"""
+from __future__ import annotations
+
+import html
+import time
+from datetime import datetime
+from pathlib import Path
+
+import streamlit as st
+
+from sts2_stats.db import connect
+from sts2_stats.importer import import_all
+from theme import PALETTES, get_css, register_altair_theme
+
+
+# ---------------------------------------------------------------------------
+# Config
+# ---------------------------------------------------------------------------
+
+DB_PATH = Path(__file__).parent / "sts2_stats.sqlite"
+IMPORT_STALE_SECONDS = 5 * 60  # re-import if DB older than 5 minutes
+
+# Canonical roster order — positional with theme.CHARACTER_RANGE. Order matches
+# the in-game character-select UI (Defect last).
+CHARACTERS = [
+    "CHARACTER.IRONCLAD",
+    "CHARACTER.SILENT",
+    "CHARACTER.NECROBINDER",
+    "CHARACTER.REGENT",
+    "CHARACTER.DEFECT",
+]
+
+
+# ---------------------------------------------------------------------------
+# Theme
+# ---------------------------------------------------------------------------
+
+def apply_theme() -> tuple[str, dict]:
+    """Resolve the active theme, inject CSS, register the Altair theme.
+
+    Defaults to dark (no flashbang on first load). Must be called on every
+    page render (each page script runs top-to-bottom independently).
+    """
+    if "theme_mode" not in st.session_state:
+        st.session_state["theme_mode"] = "dark"
+    mode = st.session_state["theme_mode"]
+    palette = PALETTES[mode]
+    st.markdown(get_css(palette, mode=mode), unsafe_allow_html=True)
+    register_altair_theme(palette)
+    return mode, palette
+
+
+# ---------------------------------------------------------------------------
+# Import-on-first-load
+# ---------------------------------------------------------------------------
+
+def _db_is_stale() -> bool:
+    if not DB_PATH.exists():
+        return True
+    return (time.time() - DB_PATH.stat().st_mtime) > IMPORT_STALE_SECONDS
+
+
+def do_import() -> dict:
+    """Run import_all() and remember when we did it."""
+    summary = import_all(DB_PATH)
+    st.session_state["last_import_at"] = datetime.now()
+    st.session_state["last_import_summary"] = summary
+    return summary
+
+
+def import_on_load() -> None:
+    """Import new runs once per session if the DB looks stale."""
+    if "last_import_at" in st.session_state:
+        return
+    if _db_is_stale():
+        with st.spinner("Importing run history..."):
+            do_import()
+    else:
+        st.session_state["last_import_at"] = datetime.fromtimestamp(DB_PATH.stat().st_mtime)
+        st.session_state["last_import_summary"] = None
+
+
+def connect_db():
+    return connect(DB_PATH)
+
+
+def _last_import_str() -> str:
+    last = st.session_state.get("last_import_at")
+    return last.strftime("%Y-%m-%d %H:%M") if last else "unknown"
+
+
+# ---------------------------------------------------------------------------
+# Sidebar (theme toggle + filters + refresh + last-import) — shared by all pages
+# ---------------------------------------------------------------------------
+
+def render_sidebar(mode: str, palette: dict) -> dict:
+    """Render the shared sidebar and return the active `filters` dict.
+
+    Widget keys are fixed so selections persist across page switches.
+    """
+    # Theme toggle
+    st.sidebar.markdown(
+        '<div class="eyebrow" style="margin: 0 0 0.75rem 0;">Theme</div>',
+        unsafe_allow_html=True,
+    )
+    theme_choice = st.sidebar.radio(
+        "Theme", ["Dark", "Light"],
+        index=0 if mode == "dark" else 1,
+        horizontal=True, label_visibility="collapsed", key="_theme_choice_radio",
+    )
+    new_mode = "dark" if theme_choice == "Dark" else "light"
+    if new_mode != mode:
+        st.session_state["theme_mode"] = new_mode
+        st.rerun()
+
+    st.sidebar.markdown("<hr>", unsafe_allow_html=True)
+    st.sidebar.markdown(
+        '<div class="eyebrow" style="margin: 0 0 0.75rem 0;">Filters</div>',
+        unsafe_allow_html=True,
+    )
+
+    mode_label = st.sidebar.radio("Mode", ["Solo", "Co-op", "Both"], index=0, key="_mode_radio")
+    mode_map = {"Solo": "solo", "Co-op": "coop", "Both": "both"}
+
+    game_mode_label = st.sidebar.radio("Game mode", ["Standard", "All"], index=0, key="_gamemode_radio")
+    game_mode_map = {"Standard": "standard", "All": "all"}
+
+    st.sidebar.markdown("<hr>", unsafe_allow_html=True)
+
+    include_abandoned = st.sidebar.checkbox("Include abandoned runs", value=False, key="_abandoned_cb")
+    ascension_min = st.sidebar.slider("Minimum ascension", 0, 10, 0, key="_ascension_slider")
+
+    st.sidebar.markdown("<hr>", unsafe_allow_html=True)
+
+    character_label = st.sidebar.selectbox(
+        "Character",
+        ["All"] + [c.replace("CHARACTER.", "") for c in CHARACTERS],
+        index=0, key="_character_select",
+    )
+    character_value = None if character_label == "All" else f"CHARACTER.{character_label}"
+
+    filters = {
+        "mode": mode_map[mode_label],
+        "game_mode": game_mode_map[game_mode_label],
+        "include_abandoned": include_abandoned,
+        "ascension_min": ascension_min,
+        "character": character_value,
+    }
+
+    st.sidebar.markdown("<hr>", unsafe_allow_html=True)
+    if st.sidebar.button("Refresh data", width="stretch", key="_refresh_btn"):
+        with st.spinner("Re-importing..."):
+            do_import()
+        st.rerun()
+
+    # Last-import info
+    info_conn = connect_db()
+    try:
+        total_runs_in_db = info_conn.execute("SELECT COUNT(*) FROM runs").fetchone()[0]
+    finally:
+        info_conn.close()
+
+    st.sidebar.markdown(
+        f'<div style="color:{palette["text_secondary"]};font-size:11px;'
+        f'line-height:1.5;margin-top:0.5rem;">'
+        f'Last import<br><span style="color:{palette["text_primary"]};font-variant-numeric:tabular-nums;">'
+        f'{html.escape(_last_import_str())}</span><br>'
+        f'<span style="font-variant-numeric:tabular-nums;">{total_runs_in_db}</span> runs in DB'
+        f'</div>',
+        unsafe_allow_html=True,
+    )
+    return filters
+
+
+# ---------------------------------------------------------------------------
+# Render helpers (shared across pages)
+# ---------------------------------------------------------------------------
+
+def page_header(title: str) -> None:
+    st.markdown(
+        f'<div class="page-header">'
+        f'<h1>{html.escape(title)}</h1>'
+        f'<span class="last-sync">Last sync {html.escape(_last_import_str())}</span>'
+        f"</div>",
+        unsafe_allow_html=True,
+    )
+
+
+def eyebrow(text: str) -> None:
+    st.markdown(f'<div class="eyebrow">{html.escape(text)}</div>', unsafe_allow_html=True)
+
+
+def metric_card(
+    label: str,
+    value: str,
+    delta: str | None = None,
+    *,
+    hero: bool = False,
+    accent: bool = False,
+    selected: bool = False,
+) -> None:
+    """Hand-rolled metric tile. Replaces st.metric."""
+    classes = ["metric-card"]
+    if hero:
+        classes.append("is-hero")
+    if selected:
+        classes.append("is-selected")
+
+    value_classes = ["metric-value"]
+    if hero:
+        value_classes.append("is-hero")
+    if accent:
+        value_classes.append("is-accent")
+
+    delta_html = ""
+    if delta:
+        delta_class = "metric-delta"
+        stripped = delta.strip()
+        if stripped.startswith("+"):
+            delta_class += " is-positive"
+        elif stripped.startswith("-") and not stripped.startswith("--"):
+            delta_class += " is-negative"
+        delta_html = f'<div class="{delta_class}">{html.escape(delta)}</div>'
+
+    st.markdown(
+        f'<div class="{" ".join(classes)}">'
+        f'<div class="metric-label">{html.escape(label)}</div>'
+        f'<div class="{" ".join(value_classes)}">{html.escape(value)}</div>'
+        f"{delta_html}"
+        f"</div>",
+        unsafe_allow_html=True,
+    )
+
+
+def character_tile(short_name: str, row: dict | None, *, selected: bool, color: str) -> None:
+    """Per-character tile: colored top stripe, name eyebrow in character color,
+    big win rate, two muted subrows."""
+    classes = ["metric-card", "character-tile"]
+    if selected:
+        classes.append("is-selected")
+
+    if row and row["runs"] > 0:
+        win_rate = f"{row['win_rate']:.1%}"
+        runs_row = (
+            f'<div class="tile-subrow"><span>Runs</span>'
+            f'<span class="v">{row["runs"]}</span></div>'
+        )
+        floors_row = (
+            f'<div class="tile-subrow"><span>Avg floors</span>'
+            f'<span class="v">{row["avg_floors_reached"]:.1f}</span></div>'
+        )
+    else:
+        win_rate = "—"
+        runs_row = (
+            '<div class="tile-subrow"><span>Runs</span>'
+            '<span class="v">0</span></div>'
+        )
+        floors_row = (
+            '<div class="tile-subrow"><span>Avg floors</span>'
+            '<span class="v">—</span></div>'
+        )
+
+    st.markdown(
+        f'<div class="{" ".join(classes)}" style="--char-color: {html.escape(color)};">'
+        f'<div class="metric-label">{html.escape(short_name)}</div>'
+        f'<div class="metric-value">{win_rate}</div>'
+        f"{runs_row}{floors_row}"
+        f"</div>",
+        unsafe_allow_html=True,
+    )

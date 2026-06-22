@@ -1,0 +1,4 @@
+{
+  "_comment": "Hand-maintained display-name overrides for cards. Map a raw card_id to the exact name to show when the auto-prettifier (strip CARD. prefix, title-case, lowercase joining words) gets it wrong — acronyms, stylized names, etc. Keys are matched against card_id verbatim; underscore-prefixed keys are notes and never match a real card.",
+  "_example": "\"CARD.AOE_STRIKE\": \"AoE Strike\""
+}

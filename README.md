@@ -2,7 +2,7 @@
 
 > A local-first stats tool for my Slay the Spire 2 runs, built to find which cards I overrate and which I should be picking more.
 
-Status: Phases 1 and 2 (data ingest + Overview dashboard) complete. Phase 3 (Card rankings + WAR + Elo) next.
+Status: Phases 1–3 complete — data ingest, Overview dashboard, and the Card Rankings board (WAR + Elo). Phase 4 (per-card / per-character detail pages) is next.
 
 ## The story
 
@@ -12,7 +12,7 @@ I've watched a lot of his videos. I wanted the same feedback loop for my own pla
 
 I'm building it because I want to use it to get better at the game, and because it's the biggest software project I've designed end-to-end so far, with all the design decisions on me (schema, statistical methodology, edge cases I didn't anticipate) instead of following a tutorial.
 
-## What's live right now (Phases 1 + 2)
+## What's live right now (Phases 1–3)
 
 **Data layer (Phase 1):**
 
@@ -32,7 +32,15 @@ I'm building it because I want to use it to get better at the game, and because 
 - A rolling 20-run win-rate trend line and a grouped bar chart of average damage taken per act per character.
 - Light / dark theme toggle in the sidebar (defaults to dark). Same purple accent in both modes; dark is a cool charcoal, light is a warm off-white with white cards.
 
-Phase 3 — card rankings with WAR + Elo — comes next.
+**Card Rankings board (Phase 3):**
+
+- A sortable table of every card I've been offered, with pick rate, win rate when picked, WAR, and Elo, and the sample size (N) on every row.
+- WAR is colored green to red; cards with too little data to read honestly are hidden behind a "minimum times offered" control instead of shown at face value.
+- The headline is the overrated / underrated split: cards I take over Skip that don't win me games, and cards that win when I take them but I usually pass. That gap, measured against my own play, is the part a generic tier list can't give me.
+- Filterable by character and act, with the full methodology written out in plain language on the page.
+- The app is now multipage (Overview + Card Rankings) via Streamlit navigation, with the theme and filters shared across both pages.
+
+Phase 4 — per-card and per-character detail pages — comes next.
 
 ## The interesting parts
 
@@ -93,7 +101,7 @@ A few design choices worth flagging:
 
 - [x] **Phase 1 — Ingest.** Parser, SQLite schema, idempotent importer, sanity-report CLI.
 - [x] **Phase 2 — Overview dashboard.** Streamlit app with the topline numbers, five character tiles, rolling win-rate trend, damage-per-act chart, and a filter sidebar.
-- [ ] **Phase 3 — Card rankings board.** Pick%, win%, WAR, Elo, all sortable, sample size shown, shrinkage applied to low-N cards.
+- [x] **Phase 3 — Card rankings board.** Pick%, win%, WAR, Elo, all sortable, sample size shown, shrinkage applied to low-N cards.
 - [ ] **Phase 4 — Per-card and per-character detail pages.** WAR by act, Elo over time, Elo-vs-WAR scatter.
 - [ ] **Phase 5 — Live refresh + the rest of the game.** Folder watcher so the dashboard updates as runs finish; relic and potion analytics on the same metric framework.
 
@@ -129,20 +137,27 @@ sts2-stats/
 ├── LICENSE              MIT
 ├── README.md
 ├── SPEC.md              full design doc
-├── app.py               Streamlit Overview dashboard (Phase 2)
+├── app.py               Streamlit entry: router + shared chrome (multipage)
+├── dashboard_common.py  shared theme, sidebar filters, render helpers
+├── views/
+│   ├── overview.py      Overview page (topline, character tiles, charts)
+│   └── card_rankings.py Card Rankings board (WAR, Elo, pick%, win%)
 ├── theme.py             palettes (dark + light) + Altair theme + custom CSS
 ├── import_all.py        one-command CLI import + sanity report
 ├── verify.py            invariant + cross-source checks + tone scan
+├── card_name_overrides.json  hand-maintained display-name overrides
 ├── requirements.txt     Python deps (just streamlit)
 ├── .gitattributes       LF line endings, *.run and *.sqlite marked binary
 ├── .streamlit/
 │   └── config.toml      Streamlit theme defaults (palette mirrors theme.py)
-├── sts2_stats/          the data-layer package
+├── sts2_stats/          the data-layer + stats package
 │   ├── paths.py         save-folder auto-detection
 │   ├── parser.py        .run JSON -> normalized records (runs + card + room events)
 │   ├── db.py            SQLite schema + sanity report
 │   ├── importer.py      idempotent upsert
-│   └── queries.py       SQL backend for the dashboard (Phase 2)
+│   ├── queries.py       SQL backend for the Overview dashboard
+│   ├── rankings.py      Phase 3 stats engine (WAR + Elo + pick%/win%)
+│   └── names.py         card / character display-name prettifier
 └── sts2_stats.sqlite    generated locally; not checked in
 ```
 
