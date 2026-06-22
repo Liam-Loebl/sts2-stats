@@ -8,7 +8,7 @@ a game-background section and confirmed data values from real run files.
 
 ---
 
-## 1. What we're building & why
+## 1. What I'm building & why
 
 A desktop app that ingests my own Slay the Spire 2 (StS2) run history and computes
 performance analytics, focused on **per-card value metrics**. Inspired by streamer
