@@ -39,15 +39,19 @@ PALETTE = {
 # Character colors — positional, pairs with the CHARACTERS list in app.py
 # (IRONCLAD, SILENT, NECROBINDER, REGENT, DEFECT) via domain=char_order on
 # the Altair color scale. Order matches the in-game UI (Defect last).
-# Hexes tuned to feel like the game's own card art rather than generic
-# Tailwind defaults: more saturated red, deeper emerald, true orange,
-# bubblegum pink, electric sky blue.
+#
+# Hexes extracted (Nov 2026) from the StS2 energy-orb PNGs hosted on
+# slaythespire.wiki.gg — the official wiki's canonical class-color icon
+# (the orb that marks each card's character). Two independent agents
+# pixel-bucketed the orb art; values below are the saturation-weighted
+# rim/identity color for each character. Mega Crit does not publish
+# official hex values; these are the closest-to-source numbers available.
 CHARACTER_RANGE = [
-    "#e63946",  # Ironclad — crimson red
-    "#16a34a",  # Silent — emerald green
-    "#ec4899",  # Necrobinder — pink
-    "#f97316",  # Regent — orange
-    "#0ea5e9",  # Defect — electric sky blue
+    "#e93e3b",  # Ironclad    — orb rim red (slightly warmer than crimson)
+    "#2ebd5d",  # Silent      — vivid jade/lime (not Tailwind forest emerald)
+    "#c64c84",  # Necrobinder — dusty rose-magenta (not Tailwind hot pink)
+    "#f9661c",  # Regent      — orb rim orange (slightly more red than amber)
+    "#438bd2",  # Defect      — medium muted blue (NOT cyan — orb has zero green)
 ]
 
 FONT_FAMILY = "Inter, 'IBM Plex Sans', -apple-system, BlinkMacSystemFont, 'Segoe UI', system-ui, sans-serif"
