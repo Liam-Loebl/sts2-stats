@@ -10,14 +10,30 @@ What it checks:
   - Random spot-check: 5 runs' worth of top-level fields re-derived from source
     JSON, every field compared against the DB row
   - Idempotency: re-running the importer leaves run/card-event counts unchanged
-  - Tone scan on README.md and SPEC.md for common AI-prose tells: em-dash
-    overuse, "not just / not only X" negative-parallelism, promotional vocab
-    (robust, leverage, delve, seamlessly, comprehensive, ...), meta-commentary
-    ("it's worth noting", "notably,", ...), inflated symbolism ("stands as a
-    testament", "at the heart of", ...), conjunctive sentence-starters
-    ("Moreover,", "Furthermore,", ...), and a heuristic for rule-of-three
-    cadence. Hits are emitted as soft NOTEs only — tone is subjective, so
-    they don't fail the run; they're just a reminder to re-read the line.
+  - Tone scan on README.md and SPEC.md against an extensible inventory of
+    AI-prose tells, tuned for a plain-confident voice:
+      1. em-dash overuse (3+ in a paragraph)
+      2. negative-parallelism ('not just X' / 'not only X')
+      3. promotional vocab (robust, leverage, delve, seamlessly, ...)
+      4. meta-commentary openers (it's worth noting, notably,, importantly,, ...)
+      5. inflated symbolism (stands as a testament, at the heart of, ...)
+      6. conjunctive sentence-starters (Moreover,, Furthermore,, ...)
+      7. rule-of-three cadence (3+ ', and' lists per paragraph)
+      8. hedge-verb density (might/could/perhaps 3+ per paragraph)
+      9. soft filler (actually, really, basically, literally, just)
+      10. sentence-starting And/But/So/Well
+      11. -ly adverb pile-ups (5+ per paragraph)
+      12. bolding density (3+ **bold** spans per section)
+      13. long paragraphs (6+ sentences)
+      14. passive voice (was/is/are + past-participle)
+      15. corporate jargon (going forward, deep dive, synergy, ...)
+      16. AI flourishes (paints a picture, in essence, crucially,, ...)
+      17. cliché openers ('in today's fast-paced world', 'long story short')
+      18. 'whilst' (prefer 'while')
+    Hits are emitted as soft NOTEs (the run still passes) plus a per-category
+    summary line, so it's easy to spot which pattern is dominating. The word
+    and phrase lists live at the top of the relevant section in this file —
+    edit them freely to tune.
 
 Use after every import (or after a game patch ships a new save-schema version)
 to confirm nothing has silently drifted. Exits 0 if all checks pass, 1 if any fail.
@@ -418,6 +434,32 @@ _CONJ_STARTERS = (
     "Consequently,", "Thus,", "Hence,",
 )
 
+# User-selected pattern inventories. Tuned for "Plain confident" voice:
+# direct first-person, no flourish, short sentences. Edit freely — these are
+# the knobs to tune the scan.
+_HEDGE_VERBS = ("might", "could", "perhaps", "possibly", "may")
+_SOFT_FILLER = ("actually", "really", "basically", "literally", "just")
+_SENTENCE_START_CONJ = ("And", "But", "So", "Well")
+_NON_ADVERB_LY = {  # -ly words that aren't adverbs — excluded from the count
+    "only", "family", "supply", "rally", "ally", "lily", "italy",
+    "lonely", "ugly", "holy", "early", "july", "rely", "imply",
+    "apply", "reply", "comply", "multiply", "assembly", "anomaly",
+    "fly", "ply", "ugly", "homely", "friendly", "lovely",
+}
+_CORPORATE_JARGON = (
+    "going forward", "at the end of the day", "synergy", "deliverable",
+    "circle back", "touch base", "deep dive", "wheelhouse",
+    "low-hanging fruit", "move the needle",
+)
+_AI_FLOURISHES = (
+    "paints a picture", "speaks volumes", "in essence", "crucially,",
+    "fundamentally,", "ultimately,",
+)
+_CLICHE_OPENERS = (
+    "in today's fast-paced world", "long story short",
+    "to make a long story short", "without further ado",
+)
+
 
 def _scan_tone(text: str) -> list[str]:
     """Return human-readable hit descriptions for one document's prose."""
@@ -470,10 +512,106 @@ def _scan_tone(text: str) -> list[str]:
         if n >= 3:
             hits.append(f"rule-of-three cadence — {n} ', and' lists in one paragraph")
 
+    # 8. Hedging density: 3+ hedge verbs in one paragraph.
+    for para in text.split("\n\n"):
+        n = sum(
+            len(re.findall(rf"\b{re.escape(w)}\b", para, flags=re.IGNORECASE))
+            for w in _HEDGE_VERBS
+        )
+        if n >= 3:
+            hits.append(
+                f"hedge density — {n} hedge words (might/could/perhaps/...) in one paragraph"
+            )
+
+    # 9. Soft filler — each occurrence is a hit.
+    for word in _SOFT_FILLER:
+        for m in re.finditer(rf"\b{re.escape(word)}\b", text, flags=re.IGNORECASE):
+            ctx = text[max(0, m.start() - 25): m.end() + 25].replace("\n", " ")
+            hits.append(f"soft filler '{m.group(0)}' — '...{ctx.strip()}...'")
+
+    # 10. Sentence-starting And / But / So / Well.
+    for m in re.finditer(r"(?:^|[.!?]\s+)(And|But|So|Well)\b", text):
+        idx = m.start(1)
+        ctx = text[max(0, idx - 20): idx + 60].replace("\n", " ")
+        hits.append(f"sentence-starting '{m.group(1)}' — '...{ctx.strip()}...'")
+
+    # 11. -ly adverb density: 5+ -ly adverbs in one paragraph.
+    for para in text.split("\n\n"):
+        matches = re.findall(r"\b\w{3,}ly\b", para)
+        matches = [w for w in matches if w.lower() not in _NON_ADVERB_LY]
+        if len(matches) >= 5:
+            hits.append(f"-ly adverb density — {len(matches)} -ly words in one paragraph")
+
+    # 12. Bolding density: 3+ **bold** spans within one Markdown section.
+    sections = re.split(r"(?m)^#+\s.*$", text)
+    for sec in sections:
+        n = len(re.findall(r"\*\*[^*\n]+\*\*", sec))
+        if n >= 3:
+            hits.append(f"bolding density — {n} **bold** spans in one section")
+
+    # 13. Long paragraphs: 6+ sentences (skip code/list/heading paragraphs).
+    for para in text.split("\n\n"):
+        first = para.strip().lstrip("> ")
+        if not first or first.startswith(("#", "-", "*", "|", "```")):
+            continue
+        if re.match(r"^\d+\.\s", first):
+            continue
+        sentences = [s for s in re.split(r"(?<=[.!?])\s+(?=[A-Z])", first) if len(s) > 3]
+        if len(sentences) >= 6:
+            hits.append(f"long paragraph — {len(sentences)} sentences")
+
+    # 14. Passive voice (heuristic): be-verb + past-participle.
+    for m in re.finditer(
+        r"\b(was|were|is|are|am|been|being|be)\s+(\w+ed|\w+en)\b",
+        text, flags=re.IGNORECASE,
+    ):
+        snippet = m.group(0)
+        ctx = text[max(0, m.start() - 15): m.end() + 25].replace("\n", " ")
+        hits.append(f"passive voice '{snippet}' — '...{ctx.strip()}...'")
+
+    # 15. Corporate jargon.
+    for phrase in _CORPORATE_JARGON:
+        idx = low.find(phrase)
+        if idx >= 0:
+            ctx = text[max(0, idx - 20): idx + len(phrase) + 30].replace("\n", " ")
+            hits.append(f"corporate jargon '{phrase}' — '...{ctx.strip()}...'")
+
+    # 16. AI flourishes (in addition to the inflated_phrases list above).
+    for phrase in _AI_FLOURISHES:
+        idx = low.find(phrase)
+        if idx >= 0:
+            ctx = text[max(0, idx - 20): idx + len(phrase) + 40].replace("\n", " ")
+            hits.append(f"AI flourish '{phrase}' — '...{ctx.strip()}...'")
+
+    # 17. Cliché openers.
+    for phrase in _CLICHE_OPENERS:
+        idx = low.find(phrase)
+        if idx >= 0:
+            ctx = text[max(0, idx - 10): idx + len(phrase) + 30].replace("\n", " ")
+            hits.append(f"cliché opener '{phrase}' — '...{ctx.strip()}...'")
+
+    # 18. 'whilst' — prefer 'while'.
+    for m in re.finditer(r"\bwhilst\b", text, flags=re.IGNORECASE):
+        ctx = text[max(0, m.start() - 25): m.end() + 25].replace("\n", " ")
+        hits.append(f"'whilst' (prefer 'while') — '...{ctx.strip()}...'")
+
     return hits
 
 
-def check_tone(r: Reporter, files: list[Path], cap: int = 25) -> None:
+def _category_of(hit: str) -> str:
+    """Pull the leading category label out of a hit string for the summary."""
+    em = hit.find(" — ")
+    q = hit.find(" '")
+    if em < 0 and q < 0:
+        return hit
+    if em < 0:
+        return hit[:q]
+    if q < 0:
+        return hit[:em]
+    return hit[: min(em, q)]
+
+
+def check_tone(r: Reporter, files: list[Path], cap: int = 50) -> None:
     r.header("Tone scan: AI-prose tells in markdown docs (soft warnings)")
     all_hits: list[str] = []
     scanned = 0
@@ -491,6 +629,10 @@ def check_tone(r: Reporter, files: list[Path], cap: int = 25) -> None:
         r.note(f"... and {len(all_hits) - cap} more (capped at {cap})")
 
     if all_hits:
+        from collections import Counter
+        cats = Counter(_category_of(h.split(": ", 1)[1] if ": " in h else h) for h in all_hits)
+        summary = ", ".join(f"{c}={n}" for c, n in cats.most_common())
+        r.note(f"by category: {summary}")
         r.ok(f"tone scan complete — {len(all_hits)} note(s) above for review")
     else:
         r.ok(f"no AI-tone tells found in {scanned} file(s)")
