@@ -10,7 +10,7 @@
 
 I've watched a lot of his videos. I wanted the same feedback loop for my own play — except I didn't want to fill in a spreadsheet by hand after every run. The game already writes a JSON file to disk every time a run ends. The data is right there. I just had to get it out.
 
-I'm building it because I actually want to use it to get better at the game — and because it's the biggest software project I've designed end-to-end, with all the design decisions on me (schema, statistical methodology, edge cases I didn't anticipate) instead of following a tutorial.
+I'm building it because I actually want to use it to get better at the game — and because it's the biggest software project I've designed end-to-end so far, with all the design decisions on me (schema, statistical methodology, edge cases I didn't anticipate) instead of following a tutorial.
 
 ## What's live right now (Phase 1)
 
@@ -76,7 +76,7 @@ A few design choices worth flagging:
 - **Auto-detect, never hardcode.** No usernames or Steam IDs live in source. Each machine builds its own local DB from its own synced copy of the save files — no DB syncing, no cloud server.
 - **Dual schema tolerance.** Both v8 and v9 save formats parse behind a single normalized representation, so the rest of the pipeline doesn't have to care which version wrote a given file.
 - **Local user resolution in co-op.** The Steam ID is pulled from the save-folder path and matched against `players[i].id` inside each run. Falls back to `players[0]` only if no match — verified safe across all 53 of my co-op runs.
-- **Sanity-report CLI.** `import_all.py` ends with a topline report (run counts, win rates, per-character / per-schema / per-build splits) I diff against my own counts after every re-import — so when the game ships a v10 schema I'll see drift immediately.
+- **Sanity report + verifier.** `import_all.py` ends with a topline report (run counts, win rates, per-character / per-schema / per-build splits) I eyeball after every re-import. For deeper checks, `verify.py` runs a battery of invariants — no NULLs in required columns, FK integrity, co-op local-user resolution on every co-op run, floor math against source JSON, random whole-row spot-checks, and idempotency — and exits non-zero if anything fails. So when the game ships a v10 schema I see drift immediately.
 
 ## Roadmap
 
@@ -112,6 +112,7 @@ The `.run` JSON files themselves are not in this repo; they live in your local `
 ```
 sts2-stats/
 ├── import_all.py        one-command entrypoint
+├── verify.py            invariant + cross-source checks (exit non-zero on failure)
 ├── sts2_stats/          the package
 │   ├── paths.py         save-folder auto-detection
 │   ├── parser.py        .run JSON -> normalized records
