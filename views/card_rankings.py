@@ -160,6 +160,11 @@ st.markdown(
 .cr-insight-card { font-size: 13px; font-weight: 600; color: var(--cr-text); }
 .cr-insight-meta { font-size: 11px; color: var(--cr-text2); font-variant-numeric: tabular-nums; }
 .cr-insight-empty { font-size: 12px; color: var(--cr-text2); }
+.cr-table { max-height: 600px; overflow: auto; border: 1px solid var(--cr-border);
+  border-radius: 12px; margin-top: 2px; }
+.cr-table table { width: 100%; margin: 0; }
+.cr-table::-webkit-scrollbar { width: 10px; height: 10px; }
+.cr-table::-webkit-scrollbar-thumb { background: var(--cr-border); border-radius: 6px; }
 </style>
 """.replace("var(--cr-surface)", palette["surface"])
    .replace("var(--cr-border)", palette["border"])
@@ -301,36 +306,37 @@ styler = (
     })
 )
 
-st.dataframe(
-    styler,
-    width="stretch",
-    hide_index=True,
-    height=560,
-    column_config={
-        "Card": st.column_config.TextColumn("Card", width="medium"),
-        "Char": st.column_config.TextColumn("Char", width="small"),
-        "Offers": st.column_config.TextColumn("Offers", help="Times this card was offered (sample size)."),
-        "Picks": st.column_config.TextColumn("Picks", help="Times I took it."),
-        "Pick %": st.column_config.TextColumn("Pick %", help="Picks ÷ Offers."),
-        "Win %": st.column_config.TextColumn(
-            "Win %", help="Win rate of runs where I took it, shrunk toward my overall "
-                          "win rate so a 2-for-2 card doesn't read as 100%."),
-        "WAR": st.column_config.TextColumn(
-            "WAR", help="Wins Above Replacement, in win-rate points: +2.2 means my runs win ~2.2 "
-                        "percentage points more often when I take this card than the average run that "
-                        "reached the same floor as that character. Shrunk toward 0 for low samples. "
-                        "Green = wins more, red = wins less."),
-        "Elo": st.column_config.TextColumn(
-            "Elo", help="Preference rating from treating every reward as a mini-tournament. "
-                        "Per-character pool, everyone starts at 1500. Shown only for cards that competed."),
-        "vs Skip": st.column_config.TextColumn(
-            "vs Skip", help="Elo minus this character's act-weighted Skip line (Skip is rated per act) — "
-                            "the 'is it worth taking' number, shrunk toward the skip line for low match "
-                            "counts. Positive = above my skip line. Shown only for cards that competed."),
-        "Elo N": st.column_config.NumberColumn(
-            "Elo N", help="Reward tournaments this card actually competed in (the Elo sample size)."),
-    },
+# Render as themed HTML rather than st.dataframe: the dataframe grid follows the
+# static config.toml theme (dark) and can't be re-themed per the light/dark
+# toggle, so we render the Styler to HTML and color it from the active palette.
+# Sorting is via the "Sort by" control above; column meanings are in the expander.
+_num_cols = ["Offers", "Picks", "Pick %", "Win %", "WAR", "Elo", "vs Skip", "Elo N"]
+styler = (
+    styler
+    .hide(axis="index")
+    .set_properties(subset=_num_cols, **{"text-align": "right"})
+    .set_table_styles([
+        {"selector": "", "props": [
+            ("width", "100%"), ("border-collapse", "collapse"), ("font-size", "12.5px"),
+            ("background-color", palette["surface"]), ("color", palette["text_primary"]),
+        ]},
+        {"selector": "thead th", "props": [
+            ("position", "sticky"), ("top", "0"), ("z-index", "1"),
+            ("background-color", palette["surface"]), ("color", palette["text_secondary"]),
+            ("font-weight", "600"), ("font-size", "10.5px"), ("text-transform", "uppercase"),
+            ("letter-spacing", "0.04em"), ("text-align", "right"), ("white-space", "nowrap"),
+            ("padding", "10px 12px"), ("border-bottom", f"1px solid {palette['border']}"),
+        ]},
+        {"selector": "thead th.col0, thead th.col1", "props": [("text-align", "left")]},
+        {"selector": "tbody td", "props": [
+            ("padding", "7px 12px"), ("white-space", "nowrap"),
+            ("font-variant-numeric", "tabular-nums"),
+            ("border-bottom", f"1px solid {palette['border']}"),
+        ]},
+        {"selector": "tbody td.col0", "props": [("font-weight", "600")]},
+    ])
 )
+st.markdown(f'<div class="cr-table">{styler.to_html()}</div>', unsafe_allow_html=True)
 
 
 # ---------------------------------------------------------------------------

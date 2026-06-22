@@ -89,6 +89,72 @@ FONT_FAMILY = "Inter, 'IBM Plex Sans', -apple-system, BlinkMacSystemFont, 'Segoe
 # CSS — chrome hiding, Inter, padding, sidebar surface
 # ---------------------------------------------------------------------------
 
+def _light_widget_css(p: dict) -> str:
+    """Light-mode overrides for Streamlit's BaseWeb widgets + native form controls.
+
+    config.toml pins base="dark", so the built-in widgets (selectbox, radio,
+    slider, checkbox, inputs) and the native color-scheme render dark regardless
+    of the in-app light/dark toggle. These rules re-light them; they're only
+    emitted when the active mode is light (empty string in dark mode, where the
+    config base already matches). Placeholder tokens are swapped for palette
+    hexes at the end to avoid f-string brace-doubling.
+    """
+    css = """
+.stApp, section[data-testid="stSidebar"] { color-scheme: light; }
+
+/* Selectbox / dropdown closed control */
+.stApp div[data-baseweb="select"] > div {
+    background-color: SURFACE !important;
+    border-color: BORDER !important;
+    color: TEXT !important;
+}
+.stApp div[data-baseweb="select"] span { color: TEXT !important; }
+.stApp div[data-baseweb="select"] svg { fill: TEXT2 !important; }
+
+/* Dropdown popover menu (the open options list) */
+div[data-baseweb="popover"] ul,
+div[data-baseweb="popover"] div[role="listbox"],
+ul[data-baseweb="menu"] { background-color: SURFACE !important; color: TEXT !important; }
+ul[data-baseweb="menu"] li { color: TEXT !important; }
+
+/* Radio + checkbox labels */
+.stApp div[data-testid="stRadio"] label,
+.stApp div[data-testid="stRadio"] label p,
+.stApp div[data-testid="stCheckbox"] label,
+.stApp div[data-testid="stCheckbox"] label p { color: TEXT !important; }
+
+/* Radio circle + checkbox box */
+.stApp div[data-baseweb="radio"] div:first-child,
+.stApp div[data-baseweb="checkbox"] div:first-child {
+    background-color: SURFACE !important;
+    border-color: TEXT2 !important;
+}
+
+/* Slider rail + thumb + value labels */
+.stApp div[data-baseweb="slider"] div[role="slider"] {
+    background-color: ACCENT !important;
+    border-color: ACCENT !important;
+}
+.stApp div[data-testid="stThumbValue"],
+.stApp div[data-testid="stSliderTickBarMin"],
+.stApp div[data-testid="stSliderTickBarMax"] { color: TEXT2 !important; }
+
+/* Text / number inputs */
+.stApp div[data-baseweb="input"], .stApp div[data-baseweb="base-input"] {
+    background-color: SURFACE !important;
+    border-color: BORDER !important;
+}
+.stApp div[data-baseweb="input"] input { color: TEXT !important; }
+"""
+    return (
+        css.replace("SURFACE", p["surface"])
+           .replace("BORDER", p["border"])
+           .replace("ACCENT", p["accent"])
+           .replace("TEXT2", p["text_secondary"])
+           .replace("TEXT", p["text_primary"])
+    )
+
+
 def get_css(palette: dict, mode: str = "dark") -> str:
     """Render the full CSS block for the given palette + mode.
 
@@ -100,6 +166,7 @@ def get_css(palette: dict, mode: str = "dark") -> str:
     fail WCAG small-text contrast against the white card surface.
     """
     char_label_color = "var(--char-color)" if mode == "dark" else palette["text_primary"]
+    widget_css = "" if mode == "dark" else _light_widget_css(palette)
     return f"""
 <style>
 @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap');
@@ -353,6 +420,9 @@ h3, .stMarkdown h3 {{
     border-color: {palette['accent']};
     color: {palette['text_primary']};
 }}
+
+/* Light-mode widget chrome (empty string in dark mode) */
+{widget_css}
 </style>
 """
 
