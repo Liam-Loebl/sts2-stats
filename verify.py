@@ -47,6 +47,14 @@ import sqlite3
 import sys
 from pathlib import Path
 
+# Windows consoles default to cp1252 and crash on common Unicode (em-dashes,
+# Greek letters, etc.). Reconfigure stdout to UTF-8 with a replacement
+# fallback so the tone-scan output can print whatever's in the docs.
+try:
+    sys.stdout.reconfigure(encoding="utf-8", errors="replace")
+except (AttributeError, OSError):
+    pass
+
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 
 from sts2_stats.db import connect
