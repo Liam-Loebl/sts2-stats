@@ -34,11 +34,11 @@ picking 1 card from a choice of options after most fights, fighting toward a bos
 - **Characters** (5 in EA, all played by the user):
   | ID | Name | Identity (for understanding card archetypes) |
   |---|---|---|
-  | `CHARACTER.IRONCLAD` | The Ironclad | High HP (80), strength/exhaust, heals after combat (Burning Blood) |
-  | `CHARACTER.SILENT` | The Silent | Low HP (70), poison / shivs / discard, draws extra (Ring of the Snake) |
-  | `CHARACTER.DEFECT` | The Defect | Orbs (lightning/frost/etc.) |
-  | `CHARACTER.REGENT` | The Regent | "Stars" resource (banked energy, max 24), NEW |
-  | `CHARACTER.NECROBINDER` | The Necrobinder | Summons a skeletal hand "Osty" companion, NEW |
+  | `CHARACTER.IRONCLAD` | The Ironclad | Strength/exhaust/self-damage, heals after combat (Burning Blood) |
+  | `CHARACTER.SILENT` | The Silent | Low HP (70), poison/shivs/discard, draws extra (Ring of the Snake) |
+  | `CHARACTER.DEFECT` | The Defect | Orbs (lightning/frost/etc.) and 0-cost cards |
+  | `CHARACTER.REGENT` | The Regent | "Stars" resource (banked energy), card creation, NEW |
+  | `CHARACTER.NECROBINDER` | The Necrobinder | Summons a skeletal hand "Osty" companion, doom, ethereal NEW |
   - Ascension is tracked independently per character. More characters/modes are on the EA roadmap, so never hardcode the roster; read it from the data.
 - **Acts:** 3 acts per run in current Early Access. StS2 has a planned "Alternate Acts"
   system, but only Act 1 currently has a biome choice (Overgrowth *or* Underdocks). Acts 2
