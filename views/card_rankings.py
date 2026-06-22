@@ -7,7 +7,6 @@ green->red WAR coloring and honest small-sample handling.
 """
 from __future__ import annotations
 
-import html
 import math
 
 import pandas as pd
@@ -108,99 +107,37 @@ shown = cards_shown + skip_rows  # Skip rows are exempt from the offers gate
 
 
 # ---------------------------------------------------------------------------
-# WAR-vs-Elo insight — the headline (SPEC §5.5)
+# Table styling
 # ---------------------------------------------------------------------------
-
-def _insight_panel(title: str, subtitle: str, picks: list[dict], kind: str) -> str:
-    if not picks:
-        body = (
-            '<div class="cr-insight-empty">Not enough picked-and-offered cards '
-            "yet — come back after more runs.</div>"
-        )
-    else:
-        items = []
-        for r in picks:
-            war = r["war"]
-            vs = r["elo_vs_skip"]
-            war_s = f"{war * 100:+.1f}" if war is not None else "—"
-            items.append(
-                f'<div class="cr-insight-row">'
-                f'<span class="cr-insight-card">{html.escape(r["card"])}</span>'
-                f'<span class="cr-insight-meta">{html.escape(r["character_name"])} · '
-                f'pick {r["pick_rate"]:.0%} · WAR {war_s} · vs Skip {vs:+.0f}</span>'
-                f"</div>"
-            )
-        body = "".join(items)
-    accent = palette["negative"] if kind == "over" else palette["positive"]
-    return (
-        f'<div class="cr-insight" style="--cr-accent: {accent};">'
-        f'<div class="cr-insight-title">{html.escape(title)}</div>'
-        f'<div class="cr-insight-sub">{html.escape(subtitle)}</div>'
-        f"{body}</div>"
-    )
-
-
-# Eligible = enough preference signal (offered a lot) AND enough outcome signal
-# (picked enough that WAR isn't a coin flip).
-elig = [
-    r for r in rows
-    if r["offers"] >= 15 and r["picks"] >= 5
-    and r["war"] is not None and r["elo_vs_skip"] is not None
-]
-overrated = sorted([r for r in elig if r["war"] < 0], key=lambda r: -r["elo_vs_skip"])[:3]
-underrated = sorted([r for r in elig if r["elo_vs_skip"] < 0], key=lambda r: -r["war"])[:3]
 
 st.markdown(
     """
 <style>
-.cr-insight { background: var(--cr-surface); border: 1px solid var(--cr-border);
-  border-left: 3px solid var(--cr-accent); border-radius: 12px; padding: 16px 18px; height: 100%; }
-.cr-insight-title { font-size: 13px; font-weight: 600; color: var(--cr-text); }
-.cr-insight-sub { font-size: 11px; color: var(--cr-text2); margin: 2px 0 12px 0; }
-.cr-insight-row { display: flex; flex-direction: column; margin-bottom: 9px; }
-.cr-insight-card { font-size: 13px; font-weight: 600; color: var(--cr-text); }
-.cr-insight-meta { font-size: 11px; color: var(--cr-text2); font-variant-numeric: tabular-nums; }
-.cr-insight-empty { font-size: 12px; color: var(--cr-text2); }
 .cr-table { max-height: 600px; overflow: auto; border: 1px solid var(--cr-border);
   border-radius: 12px; margin-top: 2px; }
 .cr-table table { width: 100%; margin: 0; }
 .cr-table::-webkit-scrollbar { width: 10px; height: 10px; }
 .cr-table::-webkit-scrollbar-thumb { background: var(--cr-border); border-radius: 6px; }
 </style>
-""".replace("var(--cr-surface)", palette["surface"])
-   .replace("var(--cr-border)", palette["border"])
-   .replace("var(--cr-text2)", palette["text_secondary"])
-   .replace("var(--cr-text)", palette["text_primary"]),
+""".replace("var(--cr-border)", palette["border"]),
     unsafe_allow_html=True,
 )
-
-dc.eyebrow("Where my picks and my results disagree")
-i1, i2 = st.columns(2, gap="small")
-with i1:
-    st.markdown(
-        _insight_panel(
-            "Overrated by me",
-            "I take these over Skip, but they don't win (high preference, negative WAR)",
-            overrated, "over",
-        ),
-        unsafe_allow_html=True,
-    )
-with i2:
-    st.markdown(
-        _insight_panel(
-            "Underrated by me",
-            "Win when I take them, but I usually pass (positive WAR, below my Skip line)",
-            underrated, "under",
-        ),
-        unsafe_allow_html=True,
-    )
 
 
 # ---------------------------------------------------------------------------
 # The board table
 # ---------------------------------------------------------------------------
 
-dc.eyebrow(f"All cards ({len(cards_shown)} shown · offered ≥ {min_offers}×) + a Skip line per act")
+search = st.text_input(
+    "Search cards", "", placeholder="Search cards by name…",
+    key="_cr_search", label_visibility="collapsed",
+).strip().lower()
+display = [r for r in shown if not search or search in r["card"].lower()]
+_n_disp = sum(1 for r in display if not r.get("is_skip"))
+dc.eyebrow(
+    f"All cards ({_n_disp} shown · offered ≥ {min_offers}×) + a Skip line per act"
+    + (f" · matching '{search}'" if search else "")
+)
 
 _sort_key = {
     "WAR": ("war", False),
@@ -216,7 +153,7 @@ def _sortval(r, key):
     return v if v is not None else -math.inf
 
 
-shown_sorted = sorted(shown, key=lambda r: _sortval(r, _sort_key[0]), reverse=not _sort_key[1])
+shown_sorted = sorted(display, key=lambda r: _sortval(r, _sort_key[0]), reverse=not _sort_key[1])
 
 def _num_or_nan(v):
     return v if v is not None else float("nan")
