@@ -49,7 +49,7 @@ PALETTE = {
 CHARACTER_RANGE = [
     "#c8232f",  # Ironclad    — deep crimson (darker + more saturated than the orb's
                 #                 lighter rim, which read as salmon on the dashboard)
-    "#1bc964",  # Silent      — vivid saturated jade (bumped from the orb extraction)
+    "#1ed75e",  # Silent      — vivid saturated green (matches user swatch)
     "#c93ea8",  # Necrobinder — saturated purple-magenta (hue pulled toward purple,
                 #                 saturation up — the dusty rose reading was too muted)
     "#fa921e",  # Regent      — amber / yellow-orange (hue shifted yellower from the
