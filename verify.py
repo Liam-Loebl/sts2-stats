@@ -141,11 +141,14 @@ def check_db_invariants(conn: sqlite3.Connection, r: Reporter) -> None:
     else:
         r.ok(f"all characters in expected EA roster ({len(chars)}/5 seen)")
 
+    # Treat NULL killed_by_* the same as the NONE.NONE sentinel so a future
+    # schema that omits the field instead of writing the sentinel still
+    # triggers the invariant check.
     bad = conn.execute("""
         SELECT COUNT(*) FROM runs
         WHERE win = 0
-          AND killed_by_encounter = 'NONE.NONE'
-          AND killed_by_event = 'NONE.NONE'
+          AND (killed_by_encounter IS NULL OR killed_by_encounter = 'NONE.NONE')
+          AND (killed_by_event IS NULL OR killed_by_event = 'NONE.NONE')
           AND was_abandoned = 0
     """).fetchone()[0]
     if bad:
@@ -472,7 +475,7 @@ _NON_ADVERB_LY = {  # -ly words that aren't adverbs — excluded from the count
     "only", "family", "supply", "rally", "ally", "lily", "italy",
     "lonely", "ugly", "holy", "early", "july", "rely", "imply",
     "apply", "reply", "comply", "multiply", "assembly", "anomaly",
-    "fly", "ply", "ugly", "homely", "friendly", "lovely",
+    "fly", "ply", "homely", "friendly", "lovely",
 }
 _CORPORATE_JARGON = (
     "going forward", "at the end of the day", "synergy", "deliverable",

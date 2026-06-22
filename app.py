@@ -58,7 +58,7 @@ if "theme_mode" not in st.session_state:
 mode = st.session_state["theme_mode"]
 PALETTE = PALETTES[mode]
 
-st.markdown(get_css(PALETTE), unsafe_allow_html=True)
+st.markdown(get_css(PALETTE, mode=mode), unsafe_allow_html=True)
 register_altair_theme(PALETTE)
 
 
@@ -288,7 +288,6 @@ st.sidebar.markdown(
 # Page header strip
 # ---------------------------------------------------------------------------
 
-_now = datetime.now().strftime("%Y-%m-%d %H:%M")
 st.markdown(
     f'<div class="page-header">'
     f'<h1>Spire Stats</h1>'
@@ -362,7 +361,7 @@ if total_runs == 0:
         "</div>",
         unsafe_allow_html=True,
     )
-    conn.close()
+    # conn was already closed in the finally block right after the queries
     st.stop()
 
 

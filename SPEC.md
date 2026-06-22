@@ -78,7 +78,7 @@ StS2 is a Godot / C# game. It writes one plain-JSON file per run, unencrypted.
 - Auto-detect by globbing `%APPDATA%\SlayTheSpire2\steam\*\profile*\saves\history`.
   Never hardcode the username or steamid; they differ per machine.
 - Ignore `*.run.backup` (dupes, ~75 of them), `current_run.*.corrupt` (in-progress), `profile1/replays/*.mcr` (binary).
-- **150 valid `.run` files** as of 2026-06-21 (97 solo + 53 co-op). Earlier count of "~137" was stale.
+- **151 valid `.run` files** as of 2026-06-22 (98 solo + 53 co-op). Drifts as the user plays.
 
 ### Run JSON schema (schema_version 9, build `v0.105.1`)
 
@@ -99,7 +99,7 @@ Parser must tolerate schema/version changes across patches. Top-level fields:
 - `map_point_history`: array of acts → array of map points (rooms). Outer index = act number.
   Each map point: `map_point_type`, `rooms` (`model_id`, `monster_ids`, `room_type`, `turns_taken`),
   and `player_stats[]` (one entry per player, index-aligned with `players[]`).
-- **Confirmed enum values** (full enumeration across 150 files):
+- **Confirmed enum values** (full enumeration across all current run files):
   - `map_point_type` (8): `monster`, `elite`, `boss`, `rest_site`, `shop`, `treasure`, `ancient`, `unknown` (= event rooms).
   - `room_type` (7): `monster`, `elite`, `boss`, `rest_site`, `shop`, `treasure`, `event`. (Note: a `map_point_type:"ancient"` map point's room has `room_type:"event"`, e.g. `EVENT.NEOW`.)
   - 20 distinct `ENCHANTMENT.*` IDs (Adroit, Clone, Corrupted, Glam, Goopy, Imbued, Instinct, Momentum, Nimble, Perfect_Fit, Royally_Approved, Sharp, Slither, Souls_Power, Sown, Spiral, Steady, Swift, Tezcataras_Ember, Vigorous).
@@ -111,7 +111,7 @@ Parser must tolerate schema/version changes across patches. Top-level fields:
   - Shortcut for card picks: the picked card's own `floor_added_to_deck` already equals this number; just read it directly. Same for `cards_gained`, `bought_relics`, `cards_removed`, and the final `players[].relics`/`deck` lists.
   - Acts vary in length per run (typically 17 / 16 / 15 = 48 floors total, but don't hardcode; always use array length).
   - Highest floor seen in this dataset: 47.
-- **`modifiers` field:** universally empty (`[]`) in all 150 runs, including the single `"custom"` run. We have no schema example of a populated modifiers entry. Keep this as a known gap; parser should accept any array shape defensively.
+- **`modifiers` field:** universally empty (`[]`) in every run observed to date, including the single `"custom"` run. We have no schema example of a populated modifiers entry. Keep this as a known gap; parser should accept any array shape defensively.
 
 `player_stats` (per room) key fields:
 - `card_choices`: `[{ card: { id, current_upgrade_level?, props? }, was_picked: bool }]`,
@@ -150,7 +150,7 @@ Conventions for all metrics:
   simple shrinkage) so a "3-for-3" card doesn't show a fake 100%. Gray out / de-emphasize very low N.
 - Sliceable per character and, where noted, per act.
 
-> Context: only ~137 runs (~25–30 per character, fewer after filtering to high ascension). Per-card
+> Context: ~150 runs (~25–30 per character, fewer after filtering to high ascension). Per-card
 > *win-rate* numbers will be noisy for a while; show N honestly and shrink. Per-card *Elo* (§5.4) is
 > far more stable because it's per reward-event, not per run.
 
@@ -221,6 +221,38 @@ Other Elo decisions:
 - Shops are a noisy Elo signal (passing a card may be gold-constrained, not preference).
   Down-weight or exclude shop card rewards from Elo initially; combat/elite/boss rewards are clean.
 
+### 5.4a Phase 3 scope decisions (locked, audit-driven)
+
+Before any WAR / Elo code is written, two semantic decisions are locked
+in here so they can't drift during implementation.
+
+**`source_type` scope.** The default Phase 3 Card Rankings board includes
+**only** these `card_events.source_type` values in both pick-rate, WAR,
+and Elo math:
+  - `monster` — standard 3-option combat reward, skippable
+  - `elite` — elite combat reward, skippable
+  - `boss` — boss combat reward, skippable
+  - `ancient` — Ancient boon-style choice (forced pick of 1)
+
+Excluded by default (toggleable in the UI later):
+  - `shop` — the recorded "reward" is the full shop inventory across
+    restocks, not a 3-option pick screen; empirically ~0.7% pick rate,
+    so it poisons the Skip-as-entity Elo update by flooding every shop
+    card with phantom losses to Skip. Shops can re-enter analysis later
+    as a separate "purchase decision" pool conditioned on gold/price.
+  - `unknown` — event rooms with 12–26 mixed options of unclear
+    semantics. Until parser.py is extended to label these correctly,
+    leave them out of WAR/Elo.
+
+**Multi-pick rewards.** A handful of reward groups (~1% of the analysis
+pool) have more than one `was_picked = true` — apparently a real game
+mechanic (card-grab events) rather than a parser bug. The Elo "picked
+beats every alternative" rule doesn't have an obvious answer for these.
+Policy for v1: **exclude reward groups with `SUM(was_picked) > 1` from
+the Elo pool**. They stay in WAR's "win-when-picked" aggregate (every
+picked card still gets a contribution), but the Elo update skips them.
+One-line filter. Revisit when there's more data.
+
 ### 5.5 The headline insight: WAR vs Elo
 WAR = what *wins*; Elo = what I *prefer*. The gap is the gold:
 - High Elo + low WAR ⇒ overrated (I keep taking it; it doesn't win).
@@ -255,11 +287,18 @@ choices). Potions are more about usage than acquisition, so mostly descriptive. 
     `is_multiplayer`, `num_players`, run_time, acts_reached, killed_by, …). For co-op runs,
     `character` = the local user's character (identification mechanism TBD via data recon).
   - `card_events` (run_id, act_index, floor, `reward_event_id`, source_type [monster/elite/boss/
-    shop/…], card_id, was_picked): one row per option per reward.
+    shop/ancient/unknown], card_id, was_picked): one row per option per reward.
   - `reward_event_id` (or the tuple run_id + act + floor/map-index) must group all options of a
     single reward so Elo can reconstruct each choice set. Skip = a reward group with no
-    `was_picked = true`.
-  - Analogous tables for relics & potions later.
+    `was_picked = true` AMONG the source_types that support skip — see Phase 3 design policy
+    in §5 for which source_types are in the Elo pool.
+  - `room_events` (run_id, act_index, map_point_index, floor, map_point_type, room_type,
+    encounter_model_id, damage_taken, hp_healed, current_hp, max_hp, gold_gained, gold_spent,
+    turns_taken): one row per room the local player passed through. Powers per-act damage
+    stats (Phase 2) and any future replay/timeline views.
+  - `import_log` (id, source_file, error, logged_at): quarantine for runs the parser couldn't
+    read. Currently empty; helps a future schema change land softly instead of crashing the import.
+  - Analogous tables for relic / potion choice events come later (Phase 5).
 - **Idempotent import**, keyed on `start_time`/`seed`. Re-scanning never duplicates. The DB is
   disposable, fully rebuildable from the `.run` files.
 - **Watcher**: background process (e.g. Python `watchdog`) on the history folder. On a new `.run`,
@@ -311,7 +350,7 @@ has the full history locally.
 
 ## 9. Build order (each phase usable on its own)
 
-1. **Foundation**: parser + SQLite schema (incl. `reward_event_id` grouping) + import all 137 runs.
+1. **Foundation**: parser + SQLite schema (incl. `reward_event_id` grouping) + import all current runs.
    Then sanity-check together: total runs, win rate, runs per character, multiplayer/custom counts.
 2. **Overview dashboard**: first thing to open and react to.
 3. **Card rankings board**: pick%, win%, WAR, Elo (sortable; N shown; shrinkage; coloring).

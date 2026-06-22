@@ -30,7 +30,7 @@ I'm building it because I want to use it to get better at the game, and because 
 - Topline row: win rate (hero stat), total runs, and best consecutive-win streak.
 - Five character tiles with per-character win rate and run count, in the game's own character colors.
 - A rolling 20-run win-rate trend line and a grouped bar chart of average damage taken per act per character.
-- Dark neutral palette with a single purple accent — built to feel like a modern analytics app rather than a fantasy theme.
+- Light / dark theme toggle in the sidebar (defaults to dark). Same purple accent in both modes; dark is a cool charcoal, light is a warm off-white with white cards.
 
 Phase 3 — card rankings with WAR + Elo — comes next.
 
@@ -126,20 +126,23 @@ The `.run` JSON files themselves are not in this repo; they live in your local `
 
 ```
 sts2-stats/
+├── LICENSE              MIT
+├── README.md
+├── SPEC.md              full design doc
 ├── app.py               Streamlit Overview dashboard (Phase 2)
-├── theme.py             palette + Altair theme + custom CSS (one source of truth)
+├── theme.py             palettes (dark + light) + Altair theme + custom CSS
 ├── import_all.py        one-command CLI import + sanity report
 ├── verify.py            invariant + cross-source checks + tone scan
 ├── requirements.txt     Python deps (just streamlit)
+├── .gitattributes       LF line endings, *.run and *.sqlite marked binary
 ├── .streamlit/
-│   └── config.toml      Streamlit theme keys (palette mirrors theme.py)
+│   └── config.toml      Streamlit theme defaults (palette mirrors theme.py)
 ├── sts2_stats/          the data-layer package
 │   ├── paths.py         save-folder auto-detection
 │   ├── parser.py        .run JSON -> normalized records (runs + card + room events)
 │   ├── db.py            SQLite schema + sanity report
 │   ├── importer.py      idempotent upsert
 │   └── queries.py       SQL backend for the dashboard (Phase 2)
-├── SPEC.md              full design doc
 └── sts2_stats.sqlite    generated locally; not checked in
 ```
 

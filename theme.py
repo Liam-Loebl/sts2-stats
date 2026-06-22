@@ -1,19 +1,22 @@
 """Visual theme for the Slay the Spire 2 stats dashboard.
 
-Two things live here:
+Public API after the light/dark refactor:
 
-1. ``CSS`` — a single CSS string injected once at the top of ``app.py``
-   via ``st.markdown(CSS, unsafe_allow_html=True)``. It loads Inter,
-   hides Streamlit chrome, tightens page padding, and gives sidebar /
-   sections their dark-neutral look. No brown. No serif.
-
-2. ``register_altair_theme()`` — registers a custom Altair theme named
-   ``'sts2'`` and enables it. Call once on app startup. Pass
-   ``theme=None`` to ``st.altair_chart`` so Streamlit doesn't clobber
-   it.
-
-The palette is the single source of truth — every other file that
-needs a hex value should import from ``PALETTE``.
+- ``PALETTES`` — dict keyed by mode (``"dark"`` / ``"light"``). Every
+  other file that needs a hex value should read ``PALETTES[mode]`` for
+  the active mode, where ``mode`` lives in ``st.session_state``.
+- ``CHARACTER_RANGE`` — list of 5 hexes, positional with the
+  ``CHARACTERS`` list in app.py. Same in both modes.
+- ``get_css(palette, mode="dark")`` — returns the CSS block for the
+  active palette. Inject once at the top of app.py via
+  ``st.markdown(get_css(palette, mode), unsafe_allow_html=True)``.
+- ``register_altair_theme(palette)`` — registers a custom Altair theme
+  named ``'sts2'`` bound to the given palette and enables it. Call once
+  on app startup AND every time the palette changes. Pass ``theme=None``
+  to ``st.altair_chart`` so Streamlit doesn't clobber it.
+- ``PALETTE`` — backwards-compat alias for ``PALETTES["dark"]``. Kept
+  for any external scripts that imported it before the refactor; new
+  code should read from ``PALETTES`` directly.
 """
 from __future__ import annotations
 
@@ -86,15 +89,17 @@ FONT_FAMILY = "Inter, 'IBM Plex Sans', -apple-system, BlinkMacSystemFont, 'Segoe
 # CSS — chrome hiding, Inter, padding, sidebar surface
 # ---------------------------------------------------------------------------
 
-def get_css(palette: dict) -> str:
-    """Render the full CSS block for the given palette (PALETTES['dark'] or PALETTES['light']).
+def get_css(palette: dict, mode: str = "dark") -> str:
+    """Render the full CSS block for the given palette + mode.
 
-    Inject the return value once at the top of app.py via
-    `st.markdown(get_css(palette), unsafe_allow_html=True)`. The CSS hides
-    Streamlit chrome, loads Inter, paints the surface / border / text from
-    the palette, and adds rules for the metric cards, character tiles
-    (including the top stripe via `--char-color`), and chart headers.
+    The `mode` argument lets the function emit different rules where a
+    palette swap alone isn't enough — currently used to render the
+    character-tile name eyebrow in the character's color on dark
+    backgrounds (where the saturated hex passes contrast on the surface)
+    but in palette['text_primary'] on light, where the same hex would
+    fail WCAG small-text contrast against the white card surface.
     """
+    char_label_color = "var(--char-color)" if mode == "dark" else palette["text_primary"]
     return f"""
 <style>
 @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap');
@@ -233,7 +238,11 @@ h3, .stMarkdown h3 {{
     padding-top: 17px;  /* compensate for the stripe height */
 }}
 .metric-card.character-tile .metric-label {{
-    color: var(--char-color);
+    /* Dark mode: name in the character's color (saturated, high contrast
+       on the dark surface). Light mode: text_primary, since the same
+       saturated hex would fail small-text contrast on white. The colored
+       top stripe still carries the identity in light mode. */
+    color: {char_label_color};
 }}
 .metric-label {{
     font-size: 11px;
