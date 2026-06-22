@@ -47,12 +47,12 @@ PALETTES = {
         "border":         "#E0DCD2",
         "text_primary":   "#1A1814",  # warm dark, strong contrast on cream
         "text_secondary": "#6B6663",
-        # Deep teal instead of the dark-mode purple: the bright cool purple fights
-        # the warm cream, whereas teal is the classic cool-warm complement to a
-        # cream/ivory background — sophisticated, high-contrast, and distinct from
-        # all five character colors (red/green/magenta/orange/blue).
-        "accent":         "#0F766E",
-        "accent_muted":   "#0F766E1F",
+        # Bright blue-teal instead of the dark-mode purple: the bright cool purple
+        # fought the warm cream, whereas teal is the classic cool-warm complement
+        # to a cream/ivory background. Brightened and shifted bluer (hue ~174 -> 191)
+        # per the user; still distinct from all five character colors.
+        "accent":         "#0E96B6",
+        "accent_muted":   "#0E96B61F",
         "positive":       "#15803D",  # darker for contrast on light bg
         "negative":       "#B91C1C",
     },
