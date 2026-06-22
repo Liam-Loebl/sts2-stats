@@ -37,7 +37,7 @@ PALETTE = {
 }
 
 # Character colors — positional, pairs with the CHARACTERS list in app.py
-# (IRONCLAD, SILENT, REGENT, NECROBINDER, DEFECT) via domain=char_order on
+# (IRONCLAD, SILENT, NECROBINDER, REGENT, DEFECT) via domain=char_order on
 # the Altair color scale. Order matches the in-game UI (Defect last).
 # Hexes tuned to feel like the game's own card art rather than generic
 # Tailwind defaults: more saturated red, deeper emerald, true orange,
@@ -45,8 +45,8 @@ PALETTE = {
 CHARACTER_RANGE = [
     "#e63946",  # Ironclad — crimson red
     "#16a34a",  # Silent — emerald green
-    "#f97316",  # Regent — orange
     "#ec4899",  # Necrobinder — pink
+    "#f97316",  # Regent — orange
     "#0ea5e9",  # Defect — electric sky blue
 ]
 
