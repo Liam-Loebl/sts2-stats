@@ -5,7 +5,10 @@
       "mcp__Claude_Preview__preview_console_logs",
       "mcp__Claude_Preview__preview_list",
       "mcp__Claude_Preview__preview_logs",
-      "mcp__df4e45f2-cdbe-4cfe-94ea-a970f7309519__search_threads"
+      "mcp__df4e45f2-cdbe-4cfe-94ea-a970f7309519__search_threads",
+      "mcp__ccd_session__mark_chapter",
+      "Bash(python verify.py)",
+      "Bash(python import_all.py)"
     ]
   }
 }
