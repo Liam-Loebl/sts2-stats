@@ -1,0 +1,22 @@
+# Normalize line endings: stored as LF in the index, checked out per-platform.
+# Silences the "LF will be replaced by CRLF" warnings on Windows commits and
+# keeps the laptop + desktop in sync.
+* text=auto eol=lf
+
+# Explicit overrides for our text formats (keeps tooling that reads
+# extensions happy even if `text=auto` mis-detects).
+*.py     text eol=lf
+*.md     text eol=lf
+*.toml   text eol=lf
+*.json   text eol=lf
+*.yml    text eol=lf
+*.yaml   text eol=lf
+*.txt    text eol=lf
+
+# Binary blobs — never touch line endings.
+*.sqlite binary
+*.sqlite-journal binary
+*.run    binary
+*.png    binary
+*.jpg    binary
+*.ico    binary

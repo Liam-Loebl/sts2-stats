@@ -111,6 +111,8 @@ streamlit run app.py        # opens the dashboard at localhost:8501
 
 `import_all.py` auto-discovers your StS2 history folder, builds `sts2_stats.sqlite` next to the script, and ends with a sanity report. `streamlit run app.py` opens the Overview dashboard in your browser; the app also re-imports automatically on launch and exposes a "Refresh data" button in the sidebar for mid-session updates.
 
+For deeper checks any time, run `python verify.py`. It re-runs the data invariants (FK integrity, floor math against the source JSON, co-op user resolution, idempotency) and the tone scan over README + SPEC, and exits non-zero if anything fails.
+
 The `.run` JSON files themselves are not in this repo; they live in your local `%APPDATA%`.
 
 ## Stack

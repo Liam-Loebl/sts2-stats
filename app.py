@@ -229,8 +229,13 @@ if st.sidebar.button("Refresh data", use_container_width=True):
         _do_import()
     st.rerun()
 
-with connect(DB_PATH) as _info_conn:
+# sqlite3 Connection's __exit__ commits but doesn't close — explicit close
+# in a try/finally so we don't leak a connection on every rerun.
+_info_conn = connect(DB_PATH)
+try:
     _total_runs_in_db = _info_conn.execute("SELECT COUNT(*) FROM runs").fetchone()[0]
+finally:
+    _info_conn.close()
 
 _last_import = st.session_state.get("last_import_at")
 _last_import_str = _last_import.strftime("%Y-%m-%d %H:%M") if _last_import else "unknown"
@@ -264,11 +269,15 @@ st.markdown(
 # ---------------------------------------------------------------------------
 
 conn = connect(DB_PATH)
-
-topline = queries.topline_stats(conn, filters)
-per_char = queries.per_character_stats(conn, filters)
-wr_over_time = queries.win_rate_over_time(conn, filters, window=20)
-dmg_per_act = queries.damage_per_act(conn, filters)
+try:
+    topline = queries.topline_stats(conn, filters)
+    per_char = queries.per_character_stats(conn, filters)
+    wr_over_time = queries.win_rate_over_time(conn, filters, window=20)
+    dmg_per_act = queries.damage_per_act(conn, filters)
+finally:
+    # Close eagerly — query results are plain dicts/lists, so the rest of
+    # the page renders from in-memory data and doesn't need conn open.
+    conn.close()
 
 total_runs = topline.get("total_runs", 0)
 win_rate = topline.get("win_rate", 0.0) or 0.0
@@ -278,10 +287,10 @@ losses = topline.get("losses", 0)
 
 
 # ---------------------------------------------------------------------------
-# Topline — hero win rate + 2 supporting tiles
+# Summary — hero win rate + 2 supporting tiles
 # ---------------------------------------------------------------------------
 
-_eyebrow("Topline")
+_eyebrow("Summary")
 
 hero_col, side_col = st.columns([2, 3], gap="small")
 
@@ -459,5 +468,3 @@ st.markdown(
     "</div>",
     unsafe_allow_html=True,
 )
-
-conn.close()

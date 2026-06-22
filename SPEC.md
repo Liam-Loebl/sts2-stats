@@ -36,9 +36,10 @@ picking 1 card from a choice of options after most fights, fighting toward a bos
   |---|---|---|
   | `CHARACTER.IRONCLAD` | The Ironclad | Strength/exhaust/self-damage, heals after combat (Burning Blood) |
   | `CHARACTER.SILENT` | The Silent | Low HP (70), poison/shivs/discard, draws extra (Ring of the Snake) |
-  | `CHARACTER.DEFECT` | The Defect | Orbs (lightning/frost/etc.) and 0-cost cards |
-  | `CHARACTER.REGENT` | The Regent | "Stars" resource (banked energy), card creation, NEW |
   | `CHARACTER.NECROBINDER` | The Necrobinder | Summons a skeletal hand "Osty" companion, doom, ethereal NEW |
+  | `CHARACTER.REGENT` | The Regent | "Stars" resource (banked energy), card creation, NEW |
+  | `CHARACTER.DEFECT` | The Defect | Orbs (lightning/frost/etc.) and 0-cost cards |
+  - The order above matches the in-game UI and the canonical `CHARACTERS` list in `app.py`. `theme.CHARACTER_RANGE` is paired positionally, so any new code keyed to this table will get the right per-character color.
   - Ascension is tracked independently per character. More characters/modes are on the EA roadmap, so never hardcode the roster; read it from the data.
 - **Acts:** 3 acts per run in current Early Access. StS2 has a planned "Alternate Acts"
   system, but only Act 1 currently has a biome choice (Overgrowth *or* Underdocks). Acts 2
@@ -248,7 +249,7 @@ choices). Potions are more about usage than acquisition, so mostly descriptive. 
 - **Parser**: read each `.run`, apply filters, flatten into tables.
   - Must handle `schema_version` 8 and 9 (both present in current data) using defensive `.get()` with defaults. Quarantine truly unparseable runs to a log rather than failing the whole import.
   - Resolve the local user index once per file: `i` such that `str(players[i].id) == local_steam_id` (fallback `players[0]`). All per-user stats use `player_stats[i]` (index-aligned with `players[]`).
-  - Floor on every event: walk `map_point_history` and assign cumulative floor 1, 2, 3, … to each map point. For card picks, the picked card's `floor_added_to_deck` already equals this value; read directly.
+  - Floor on every event: walk `map_point_history` and assign cumulative floor 1, 2, 3, … to each map point. The picked card's `floor_added_to_deck` already equals this value; the parser computes the floor positionally (so non-pick options in the same reward get a floor too) and `verify.py` uses `floor_added_to_deck` as a cross-check.
 - **SQLite** (one local file). Suggested tables:
   - `runs` (run_id [= start_time], character, ascension, build_id, game_mode, win, abandoned,
     `is_multiplayer`, `num_players`, run_time, acts_reached, killed_by, …). For co-op runs,
