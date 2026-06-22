@@ -31,7 +31,8 @@ PALETTES = {
     "dark": {
         "background":     "#0B0D10",
         "surface":        "#13161B",
-        "border":         "#1F242C",
+        "border":         "#2A313B",
+        "shadow":         "0 1px 3px rgba(0,0,0,0.45), inset 0 1px 0 rgba(255,255,255,0.04)",
         "text_primary":   "#E6E8EB",
         "text_secondary": "#8A929E",
         "accent":         "#7C5CFF",  # purple, identical in both modes
@@ -44,7 +45,8 @@ PALETTES = {
         # on the eyes and lets the white surface cards visually lift.
         "background":     "#F2EFE8",
         "surface":        "#FFFFFF",  # cards "lift" above the cream bg
-        "border":         "#E0DCD2",
+        "border":         "#D6D0C2",
+        "shadow":         "0 1px 2px rgba(26,24,20,0.05), 0 4px 12px rgba(26,24,20,0.07)",
         "text_primary":   "#1A1814",  # warm dark, strong contrast on cream
         "text_secondary": "#6B6663",
         # Deep teal instead of the dark-mode purple (teal is the classic cool-warm
@@ -198,7 +200,7 @@ def get_css(palette: dict, mode: str = "dark") -> str:
 html, body, [class*="css"], .stApp, .stMarkdown, .stText,
 section[data-testid="stSidebar"] {{
     font-family: {FONT_FAMILY};
-    font-feature-settings: 'tnum' 1, 'cv11' 1;
+    font-feature-settings: 'cv11' 1;
     -webkit-font-smoothing: antialiased;
     -moz-osx-font-smoothing: grayscale;
 }}
@@ -246,7 +248,9 @@ header[data-testid="stHeader"] {{ display: none; }}
 /* Tighten page padding, cap width */
 .block-container {{
     padding: 1.5rem 2rem 3rem 2rem;
-    max-width: 1280px;
+    max-width: 1320px;
+    margin-left: auto;
+    margin-right: auto;
 }}
 
 /* Sidebar surface */
@@ -279,7 +283,7 @@ h1, .stMarkdown h1 {{
     margin: 0 0 0.25rem 0;
 }}
 h2, .stMarkdown h2 {{
-    font-size: 14px !important;
+    font-size: 15px !important;
     font-weight: 600 !important;
     color: {palette['text_primary']} !important;
 }}
@@ -293,11 +297,12 @@ h3, .stMarkdown h3 {{
 .eyebrow {{
     font-size: 11px;
     font-weight: 600;
-    letter-spacing: 0.08em;
+    letter-spacing: 0.06em;
     text-transform: uppercase;
-    color: {palette['text_secondary']};
-    margin: 2rem 0 0.75rem 0;
+    color: {palette['text_primary']};
+    margin: 2.5rem 0 0.85rem 0;
 }}
+.eyebrow:first-of-type {{ margin-top: 0.5rem; }}
 
 /* Metric card — hand-rolled, replaces st.metric */
 .metric-card {{
@@ -306,6 +311,7 @@ h3, .stMarkdown h3 {{
     border-radius: 16px;
     padding: 20px;
     height: 100%;
+    box-shadow: {palette['shadow']};
 }}
 .metric-card.is-hero {{
     padding: 28px;
@@ -345,7 +351,7 @@ h3, .stMarkdown h3 {{
 }}
 .metric-value {{
     font-size: 32px;
-    font-weight: 600;
+    font-weight: 700;
     line-height: 1.1;
     color: {palette['text_primary']};
     font-variant-numeric: tabular-nums;
@@ -353,6 +359,10 @@ h3, .stMarkdown h3 {{
 }}
 .metric-value.is-hero {{
     font-size: 48px;
+    letter-spacing: -0.02em;
+}}
+.metric-value.is-secondary {{
+    font-size: 26px;
 }}
 .metric-value.is-accent {{
     color: {palette['accent']};
