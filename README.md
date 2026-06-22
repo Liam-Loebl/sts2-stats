@@ -17,20 +17,20 @@ I'm building it because I want to use it to get better at the game, and because 
 **Data layer (Phase 1):**
 
 - Auto-detects the StS2 save folder under `%APPDATA%`. Same code works on my laptop and my desktop with no configuration.
-- Parses every `.run` JSON file (150 runs so far) into a local SQLite database with three tables: `runs`, `card_events` (every option of every card reward, with the floor it was offered), and `room_events` (per-room damage / healing / gold / turn count).
+- Parses every `.run` JSON file (151 runs and counting) into a local SQLite database with three primary tables (`runs`; `card_events`, one row per option of every card reward, with the floor it was offered; `room_events`, one row per room with damage / healing / gold / turn count) plus an `import_log` quarantine table for any file the parser can't read.
 - Handles both schema versions present in my local runs (v8 and v9). The game has continued to bump the save schema in later patches; covering newer schemas is on the to-do list as I encounter them.
 - Co-op aware: each co-op run is stored with a flag, and the local player is identified by matching the Steam ID in the save-folder path against the player IDs inside the run.
 - Idempotent: re-running the import is a no-op for runs already in the database.
-- Verified end-to-end against the full corpus (150 runs, 9,882 card events, 4,906 room events). Every topline number matches the counts I derived by hand from the raw JSON before writing the importer.
+- Verified end-to-end against the full corpus (151 runs, 9,933 card events, 4,935 room events at time of writing). Every topline number matches the counts I derived by hand from the raw JSON before writing the importer.
 
 **Overview dashboard (Phase 2):**
 
 - Streamlit app (`app.py`) that opens in a browser and re-imports new runs automatically on startup.
 - Sidebar filters: solo / co-op / both, standard / all game modes, include or exclude abandoned, minimum ascension, character.
-- Topline row: total runs, win rate, best consecutive-win streak, most-played ascension.
-- Five character tiles with per-character win rate and run count.
+- Topline row: win rate (hero stat), total runs, and best consecutive-win streak.
+- Five character tiles with per-character win rate and run count, in the game's own character colors.
 - A rolling 20-run win-rate trend line and a grouped bar chart of average damage taken per act per character.
-- Dark, ember-themed visual style tuned to feel like the game itself.
+- Dark neutral palette with a single purple accent — built to feel like a modern analytics app rather than a fantasy theme.
 
 Phase 3 — card rankings with WAR + Elo — comes next.
 
@@ -125,12 +125,13 @@ The `.run` JSON files themselves are not in this repo; they live in your local `
 ```
 sts2-stats/
 ├── app.py               Streamlit Overview dashboard (Phase 2)
+├── theme.py             palette + Altair theme + custom CSS (one source of truth)
 ├── import_all.py        one-command CLI import + sanity report
-├── verify.py            invariant + cross-source checks (exit non-zero on failure)
+├── verify.py            invariant + cross-source checks + tone scan
 ├── requirements.txt     Python deps (just streamlit)
 ├── .streamlit/
-│   └── config.toml      dark ember-themed dashboard
-├── sts2_stats/          the package
+│   └── config.toml      Streamlit theme keys (palette mirrors theme.py)
+├── sts2_stats/          the data-layer package
 │   ├── paths.py         save-folder auto-detection
 │   ├── parser.py        .run JSON -> normalized records (runs + card + room events)
 │   ├── db.py            SQLite schema + sanity report

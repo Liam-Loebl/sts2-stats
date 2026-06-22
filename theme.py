@@ -139,6 +139,13 @@ h3, .stMarkdown h3 {{
 }}
 .metric-card.is-hero {{
     padding: 28px;
+    /* Match height of the right-column 2-stack (two cards + 0.5rem gap).
+       Without this Streamlit's columns top-align and the hero column
+       hangs shorter than its neighbor. */
+    min-height: calc(2 * 116px + 0.5rem);
+    display: flex;
+    flex-direction: column;
+    justify-content: center;
 }}
 .metric-card.is-selected {{
     border-color: {PALETTE['accent']};
@@ -200,21 +207,16 @@ h3, .stMarkdown h3 {{
     font-variant-numeric: tabular-nums;
 }}
 
-/* Chart card wrapper */
-.chart-card {{
-    background: {PALETTE['surface']};
-    border: 1px solid {PALETTE['border']};
-    border-radius: 16px;
-    padding: 20px;
-    margin-bottom: 0.5rem;
-}}
-.chart-card .chart-title {{
+/* Chart headers (sit above each chart, columns provide the grouping —
+   no bordered wrapper, since Streamlit can't reliably wrap a chart in
+   a markdown-emitted div). */
+.chart-title {{
     font-size: 13px;
     font-weight: 600;
     color: {PALETTE['text_primary']};
-    margin: 0 0 4px 0;
+    margin: 0.25rem 0 4px 0;
 }}
-.chart-card .chart-sub {{
+.chart-sub {{
     font-size: 11px;
     color: {PALETTE['text_secondary']};
     margin: 0 0 12px 0;
@@ -350,6 +352,17 @@ def _sts2_altair_theme() -> dict:
 
 
 def register_altair_theme() -> None:
-    """Register and enable the 'sts2' Altair theme. Idempotent."""
-    alt.themes.register("sts2", _sts2_altair_theme)
-    alt.themes.enable("sts2")
+    """Register and enable the 'sts2' Altair theme. Idempotent across reruns.
+
+    Altair 5.5+ deprecated `alt.themes.register/enable` in favor of
+    `alt.theme.register(...)`. Try the new API first, fall back to the old
+    so this works on either generation.
+    """
+    try:
+        # Altair 5.5+ — register() is a decorator-factory that takes
+        # (name, *, enable=False) and returns a decorator.
+        alt.theme.register("sts2", enable=True)(_sts2_altair_theme)
+    except AttributeError:
+        # Altair < 5.5 — old API, two function calls.
+        alt.themes.register("sts2", _sts2_altair_theme)
+        alt.themes.enable("sts2")

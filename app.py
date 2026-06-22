@@ -209,7 +209,7 @@ st.sidebar.markdown("<hr>", unsafe_allow_html=True)
 
 character_label = st.sidebar.selectbox(
     "Character",
-    ["All", "IRONCLAD", "SILENT", "DEFECT", "REGENT", "NECROBINDER"],
+    ["All"] + [c.replace("CHARACTER.", "") for c in CHARACTERS],
     index=0,
 )
 character_value = None if character_label == "All" else f"CHARACTER.{character_label}"
@@ -350,7 +350,6 @@ left_col, right_col = st.columns([3, 2], gap="small")
 
 with left_col:
     st.markdown(
-        '<div class="chart-card">'
         '<div class="chart-title">Rolling win rate</div>'
         '<div class="chart-sub">20-run window, chronological</div>',
         unsafe_allow_html=True,
@@ -388,11 +387,9 @@ with left_col:
             .properties(height=280)
         )
         st.altair_chart(line, use_container_width=True, theme=None)
-    st.markdown("</div>", unsafe_allow_html=True)
 
 with right_col:
     st.markdown(
-        '<div class="chart-card">'
         '<div class="chart-title">Damage taken per act</div>'
         '<div class="chart-sub">Average, by character</div>',
         unsafe_allow_html=True,
@@ -450,7 +447,6 @@ with right_col:
             .properties(height=280)
         )
         st.altair_chart(bars, use_container_width=True, theme=None)
-    st.markdown("</div>", unsafe_allow_html=True)
 
 
 # ---------------------------------------------------------------------------

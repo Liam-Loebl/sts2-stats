@@ -71,11 +71,11 @@ StS2 is a Godot / C# game. It writes one plain-JSON file per run, unencrypted.
 ```
 %APPDATA%\SlayTheSpire2\steam\<steamid>\profile1\saves\history\<unix_start_time>.run
 ```
-- Example on current machine:
-  `C:\Users\loebl\AppData\Roaming\SlayTheSpire2\steam\76561199082202541\profile1\saves\history\`
+- Example shape:
+  `C:\Users\<you>\AppData\Roaming\SlayTheSpire2\steam\<steamid>\profile1\saves\history\`
 - Filename = run's unix start time, e.g. `1779397791.run`.
 - Auto-detect by globbing `%APPDATA%\SlayTheSpire2\steam\*\profile*\saves\history`.
-  Never hardcode the username (`loebl`) or steamid; they differ per machine.
+  Never hardcode the username or steamid; they differ per machine.
 - Ignore `*.run.backup` (dupes, ~75 of them), `current_run.*.corrupt` (in-progress), `profile1/replays/*.mcr` (binary).
 - **150 valid `.run` files** as of 2026-06-21 (97 solo + 53 co-op). Earlier count of "~137" was stale.
 
@@ -90,7 +90,7 @@ Parser must tolerate schema/version changes across patches. Top-level fields:
   `platform_type`; `schema_version`.
 - `players` (array). Length > 1 means multiplayer (co-op); store with `is_multiplayer` flag (default-filtered, toggleable, see §4). Each player has: `id` (int64, the player's 17-digit Steam ID), `character` (one of the 5 IDs above), final `deck` (cards: `id`, `current_upgrade_level?`, `enchantment?`, `floor_added_to_deck`), `relics`, `potions`, `max_potion_slot_count`. (`badges` is documented but empty/absent in observed co-op runs.)
 - **Local user identification** (resolved): parse the local Steam ID once from the save-folder path
-  (e.g. `.../steam/76561199082202541/profile1/...` → `76561199082202541`). In any run (solo or co-op),
+  (e.g. `.../steam/<steamid>/profile1/...` → `<steamid>`). In any run (solo or co-op),
   the local user is `players[i]` where `str(players[i].id) == local_steam_id`. Fallback: `players[0]`.
   100% of co-op runs in this dataset have the local user at index 0 (the save-writing client writes itself first).
   Important: `player_stats` arrays inside each map point are index-aligned with `players[]`, so once you
