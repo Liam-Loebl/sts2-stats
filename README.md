@@ -16,7 +16,7 @@ I'm building it because I want to use it to get better at the game, and because 
 
 **Data layer (Phase 1):**
 
-- Auto-detects the StS2 save folder under `%APPDATA%`. Same code works on my laptop and my desktop with no configuration.
+- Auto-detects the StS2 save folder across operating systems — Windows (`%APPDATA%`), macOS, and Linux Steam layouts — so the same code runs unchanged on my laptop and desktop with no configuration.
 - Parses every `.run` JSON file (over 150 runs and counting) into a local SQLite database with three primary tables (`runs`; `card_events`, one row per option of every card reward, with the floor it was offered; `room_events`, one row per room with damage / healing / gold / turn count) plus an `import_log` quarantine table for any file the parser can't read.
 - Handles both schema versions present in my local runs (v8 and v9). The game has continued to bump the save schema in later patches; covering newer schemas is on the to-do list as I encounter them.
 - Co-op aware: each co-op run is stored with a flag, and the local player is identified by matching the Steam ID in the save-folder path against the player IDs inside the run.
@@ -108,7 +108,7 @@ A few design choices worth flagging:
 
 ## Setup
 
-Requires Python 3.10+ and a Windows machine where you've launched Slay the Spire 2 at least once (so the run-history files are present locally).
+Requires Python 3.11+ and a machine (Windows, macOS, or Linux) where you've launched Slay the Spire 2 at least once, so the run-history files are present locally.
 
 ```bash
 git clone https://github.com/Liam-Loebl/sts2-stats.git
@@ -120,13 +120,15 @@ streamlit run app.py        # opens the dashboard at localhost:8501
 
 `import_all.py` auto-discovers your StS2 history folder, builds `sts2_stats.sqlite` next to the script, and ends with a sanity report. `streamlit run app.py` opens the Overview dashboard in your browser; the app also re-imports automatically on launch and exposes a "Refresh data" button in the sidebar for mid-session updates.
 
+Prefer [uv](https://docs.astral.sh/uv/)? `uv run streamlit run app.py` works too — a `pyproject.toml` and `uv.lock` are included for a reproducible environment.
+
 For deeper checks any time, run `python verify.py`. It re-runs the data invariants (FK integrity, floor math against the source JSON, co-op user resolution, idempotency) and the tone scan over README + SPEC, and exits non-zero if anything fails.
 
-The `.run` JSON files themselves are not in this repo; they live in your local `%APPDATA%`.
+The `.run` JSON files themselves are not in this repo; they live in your local Steam save folder (`%APPDATA%` on Windows, the Steam `userdata` folder on macOS/Linux).
 
 ## Stack
 
-- **Python 3.12** (3.10+ supported): parser, importer, metric computation
+- **Python 3.12** (3.11+ supported): parser, importer, metric computation
 - **SQLite** (standard-library `sqlite3`): storage, single file, no server
 - **Streamlit**: dashboard (Phase 2+)
 - **git**: version control
@@ -148,7 +150,9 @@ sts2-stats/
 ├── verify.py            invariant + cross-source checks + tone scan
 ├── card_name_overrides.json  hand-maintained display-name overrides
 ├── card_reworks.json    card-rebalance valid-from list (latest-version filter)
-├── requirements.txt     Python deps (just streamlit)
+├── requirements.txt     Python deps for pip (streamlit)
+├── pyproject.toml       project metadata + deps (pip or uv)
+├── uv.lock              pinned lockfile for reproducible uv installs
 ├── .gitattributes       LF line endings, *.run and *.sqlite marked binary
 ├── .streamlit/
 │   └── config.toml      Streamlit theme defaults (palette mirrors theme.py)
