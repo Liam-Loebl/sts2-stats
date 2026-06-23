@@ -40,7 +40,6 @@ from __future__ import annotations
 
 import sqlite3
 from collections import defaultdict
-from typing import Any
 
 from . import reworks
 from .names import pretty_card_name, pretty_character_name
@@ -280,20 +279,31 @@ def compute_rankings(
     acts_seen: set[int] = set()
 
     groups: dict[str, dict] = {}
-    invalid_groups: set[str] = set()  # reward whose picked card was reworked-out -> stale
+    # A reward whose PICKED option predates its card's valid-from build is stale:
+    # the choice was made in an old-version context, so the WHOLE reward is dropped.
+    # Pre-scan for these up front so the stale set is known before any option is
+    # counted -- otherwise the non-picked options of a stale reward still leak into
+    # offers / pick% (Elo and the Skip stats already drop stale rewards via
+    # valid_groups, so counting their offers here was an inconsistency).
+    invalid_groups: set[str] = {
+        reward_id
+        for run_id, reward_id, card_id, source, floor, act_index, was_picked, mpi in events
+        if was_picked
+        and (run := runs.get(int(run_id))) is not None
+        and reworks.event_excluded(card_id, run["build_id"])
+    }
 
     for run_id, reward_id, card_id, source, floor, act_index, was_picked, mpi in events:
         run = runs.get(int(run_id))
         if run is None:
             continue
+        if reward_id in invalid_groups:
+            continue  # stale reward (its picked card was reworked-out): drop entirely
         char = run["character"]
         act_no = int(act_index) + 1
-        # Card-rework valid-from filter: drop a reworked card's pre-rework events so
-        # only its current form counts. If the *picked* option is reworked-out, the
-        # whole reward is stale (drop from Elo/skip, don't turn it into a skip).
+        # Drop a reworked card's OWN pre-rework events (its old form) even inside an
+        # otherwise-valid reward -- an old-version option offered beside a current pick.
         if reworks.event_excluded(card_id, run["build_id"]):
-            if was_picked:
-                invalid_groups.add(reward_id)
             continue
         key = (card_id, char)
         offers[key] += 1
@@ -325,7 +335,8 @@ def compute_rankings(
                 cell[1] += base
                 cell[2] += 1
 
-    valid_groups = [g for rid, g in groups.items() if rid not in invalid_groups]
+    # groups now holds only valid (non-stale) rewards — stale ones were skipped above.
+    valid_groups = list(groups.values())
     ratings, elo_counts = _run_elo(valid_groups, runs)
 
     def _skip_rating(ch: str, act_no: int) -> float:

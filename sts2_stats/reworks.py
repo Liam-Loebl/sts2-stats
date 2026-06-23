@@ -13,6 +13,7 @@ build_ids look like "v0.101.0"; they're parsed to integer tuples and padded so
 from __future__ import annotations
 
 import json
+import re
 from functools import lru_cache
 from pathlib import Path
 
@@ -32,21 +33,27 @@ def _reworks() -> dict[str, str]:
 
 
 def _parse_build(build_id) -> tuple[int, ...] | None:
-    """`v0.101.0` -> (0, 101, 0, 0), padded to length 4. None if unparseable."""
+    """`v0.101.0` -> (0, 101, 0, 0), padded to length 4. None if unparseable.
+
+    Each dotted component is read as its LEADING run of digits, so a pre-release
+    suffix like 'v0.103.0-rc1' is ignored rather than concatenated into the number
+    (the old behavior turned '0-rc1' into 1, mis-dating the build). A component
+    with no leading digit is unparseable -> None (fail open). Components past the
+    4th are kept, not truncated, so deeper version strings still compare."""
     if not build_id:
         return None
     parts = str(build_id).lstrip("vV").split(".")
     out: list[int] = []
     for p in parts:
-        digits = "".join(ch for ch in p if ch.isdigit())
-        if digits == "":
+        m = re.match(r"\d+", p.strip())
+        if m is None:
             return None
-        out.append(int(digits))
+        out.append(int(m.group()))
     if not out:
         return None
     while len(out) < 4:
         out.append(0)
-    return tuple(out[:4])
+    return tuple(out)
 
 
 def version_key(build_id) -> tuple[int, ...]:
@@ -68,7 +75,3 @@ def event_excluded(card_id: str, build_id) -> bool:
     if vf is None or bb is None:
         return False  # can't compare -> include (fail open)
     return bb < vf
-
-
-def has_reworks() -> bool:
-    return bool(_reworks())
