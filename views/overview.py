@@ -41,26 +41,24 @@ losses = topline.get("losses", 0)
 
 
 # ---------------------------------------------------------------------------
-# Summary — hero win rate + 2 supporting tiles
+# Summary — three equal-weight tiles (win rate accented by color, not size)
 # ---------------------------------------------------------------------------
 
 dc.eyebrow("Summary")
 
-hero_col, side_col = st.columns([3, 2], gap="small")
-with hero_col:
+s1, s2, s3 = st.columns(3, gap="small")
+with s1:
     dc.metric_card(
         "Win rate",
         f"{win_rate:.1%}" if total_runs else "—",
         delta=(f"{wins}W / {losses}L" if total_runs else None),
-        hero=True,
+        secondary=True,
         accent=True,
     )
-with side_col:
-    s1, s2 = st.columns(2, gap="small")
-    with s1:
-        dc.metric_card("Total runs", f"{total_runs}", secondary=True)
-    with s2:
-        dc.metric_card("Best streak", f"{best_streak}", secondary=True)
+with s2:
+    dc.metric_card("Total runs", f"{total_runs}", secondary=True)
+with s3:
+    dc.metric_card("Best streak", f"{best_streak}", secondary=True)
 
 
 # ---------------------------------------------------------------------------
