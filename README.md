@@ -17,25 +17,26 @@ I'm building it because I want to use it to get better at the game, and because 
 **Data layer (Phase 1):**
 
 - Auto-detects the StS2 save folder under `%APPDATA%`. Same code works on my laptop and my desktop with no configuration.
-- Parses every `.run` JSON file (151 runs and counting) into a local SQLite database with three primary tables (`runs`; `card_events`, one row per option of every card reward, with the floor it was offered; `room_events`, one row per room with damage / healing / gold / turn count) plus an `import_log` quarantine table for any file the parser can't read.
+- Parses every `.run` JSON file (over 150 runs and counting) into a local SQLite database with three primary tables (`runs`; `card_events`, one row per option of every card reward, with the floor it was offered; `room_events`, one row per room with damage / healing / gold / turn count) plus an `import_log` quarantine table for any file the parser can't read.
 - Handles both schema versions present in my local runs (v8 and v9). The game has continued to bump the save schema in later patches; covering newer schemas is on the to-do list as I encounter them.
 - Co-op aware: each co-op run is stored with a flag, and the local player is identified by matching the Steam ID in the save-folder path against the player IDs inside the run.
 - Idempotent: re-running the import is a no-op for runs already in the database.
-- Verified end-to-end against the full corpus (151 runs, 9,933 card events, 4,935 room events at time of writing). Every topline number matches the counts I derived by hand from the raw JSON before writing the importer.
+- Verified end-to-end against the full corpus (153 runs, 10,009 card events, 4,980 room events at time of writing). Every topline number matches the counts I derived by hand from the raw JSON before writing the importer.
 
 **Overview dashboard (Phase 2):**
 
 - Streamlit app (`app.py`) that opens in a browser and re-imports new runs automatically on startup.
-- Sidebar filters: solo / co-op / both, standard / all game modes, include or exclude abandoned, minimum ascension, character.
+- Sidebar filters: solo / co-op / both, standard / all game modes, include or exclude abandoned, minimum ascension, and a minimum game-version (patch) window. (Character is a per-page control on the Card Rankings board, not a global sidebar filter.)
 - Topline row: win rate (hero stat), total runs, and best consecutive-win streak.
 - Five character tiles with per-character win rate and run count, in the game's own character colors.
 - A rolling 20-run win-rate trend line and a grouped bar chart of average damage taken per act per character.
-- Light / dark theme toggle in the sidebar (defaults to dark). Same purple accent in both modes; dark is a cool charcoal, light is a warm off-white with white cards.
+- Light / dark theme toggle in the sidebar (defaults to dark). Mode-specific accent (purple in dark, teal in light, each chosen to suit its background); dark is a cool charcoal, light is a warm off-white with white cards.
 
 **Card Rankings board (Phase 3):**
 
 - A sortable table of every card I've been offered, with pick rate, win rate when picked, WAR, and Elo, and the sample size (N) on every row.
 - WAR is colored green to red; cards with too little data to read honestly are hidden behind a "minimum times offered" control instead of shown at face value.
+- Patch-aware: a per-card valid-from list (`card_reworks.json`) counts only each card's current reworked version, and a sidebar minimum-patch slider can restrict every stat to runs from a chosen game version onward.
 - The headline is the overrated / underrated split: cards I take over Skip that don't win me games, and cards that win when I take them but I usually pass. That gap, measured against my own play, is the part a generic tier list can't give me.
 - Filterable by character and act, with the full methodology written out in plain language on the page.
 - The app is now multipage (Overview + Card Rankings) via Streamlit navigation, with the theme and filters shared across both pages.
@@ -146,6 +147,7 @@ sts2-stats/
 ├── import_all.py        one-command CLI import + sanity report
 ├── verify.py            invariant + cross-source checks + tone scan
 ├── card_name_overrides.json  hand-maintained display-name overrides
+├── card_reworks.json    card-rebalance valid-from list (latest-version filter)
 ├── requirements.txt     Python deps (just streamlit)
 ├── .gitattributes       LF line endings, *.run and *.sqlite marked binary
 ├── .streamlit/
@@ -157,6 +159,7 @@ sts2-stats/
 │   ├── importer.py      idempotent upsert
 │   ├── queries.py       SQL backend for the Overview dashboard
 │   ├── rankings.py      Phase 3 stats engine (WAR + Elo + pick%/win%)
+│   ├── reworks.py       card-rework valid-from filter + version_key helper
 │   └── names.py         card / character display-name prettifier
 └── sts2_stats.sqlite    generated locally; not checked in
 ```

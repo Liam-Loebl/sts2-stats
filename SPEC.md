@@ -138,7 +138,8 @@ Filter at query time, never delete runs (reversible; lets us compare later).
 | `game_mode` | Standard only | exclude `"custom"` (and any future seeded/daily modes) |
 | Abandoned (`was_abandoned`) | excluded (toggle) | quit ≠ loss; allow including via toggle |
 | Ascension | show all, adjustable threshold (e.g. "≥ N") | I raise it as I climb; EA max is 10, may rise. Don't hardcode. |
-| Card version window | per-card, default = all | When a card is reworked, count its stats only from that `build_id`/date forward. Maintain a hand-edited "balance changepoints" config (card → valid-from version). Do not auto-detect card text changes. |
+| Card version window | per-card, default = all (now populated) | When a card is reworked, count its stats only from that `build_id` forward. Hand-maintained in `card_reworks.json` (card → valid-from version); do not auto-detect card text changes. |
+| Minimum patch (game version) | all versions | Restrict every stat to runs whose `build_id` is at/after a chosen version — a run-level window that complements the per-card valid-from list. UI: a discrete `select_slider` over the versions present (build_id can't be range-compared lexically, so the sidebar resolves the cutoff to the set of qualifying build_ids). |
 
 ---
 
@@ -399,6 +400,6 @@ has the full history locally.
 - **Never hardcode** the roster, ascension max, number of acts, or schema. Read from data; tolerate patch changes. (Act 4 / Heart may be added; new characters are on the roadmap.)
 - **Co-op runs are stored, not discarded.** Default filter is solo only; toggle in UI for co-op-only or both. Compute metric baselines per mode separately.
 - **Card display names**: prettify IDs (`CARD.HELIX_DRILL` → "Helix Drill") with a hand-maintained JSON overrides file for cases where the auto-result is ugly. Same approach for relics/potions/characters.
-- **Card-rebalance "valid-from" list**: a hand-edited YAML file in the project. One block per affected card mapping it to a minimum `build_id`. Cards not listed use all data.
+- **Card-rebalance "valid-from" list** (`card_reworks.json`, repo root): a hand-maintained JSON map of `card_id` → minimum `build_id` its current form is valid from; earlier events are excluded so each card shows only its latest version. Cards not listed use all their data. Underscore-prefixed keys are notes and ignored. Implemented in `sts2_stats/reworks.py`, applied in `sts2_stats/rankings.py`; sourced from Jorbs' StS2 CardStats version-era ranges, not auto-detected.
 - **Version control from day one**: Git + GitHub. `.gitignore` excludes raw `.run` files, the SQLite DB, and any local config holding personal data.
 - This is a learning + portfolio project. Preserve the statistical intent; don't dumb metrics down.

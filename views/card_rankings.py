@@ -326,6 +326,11 @@ Step size K = {meta['elo_k']:.0f}. *vs Skip* is shrunk toward the skip line for
 cards with few matches and shown only for cards that competed, so a single lucky
 pick can't headline.
 
+**Card versions.** When a card is reworked in a patch, its pre-rework rewards are
+dropped (a hand-maintained valid-from list, `card_reworks.json`), so each card's
+numbers reflect only its current form. The sidebar **Minimum patch** control can
+further restrict the whole board to runs from a chosen game version onward.
+
 **The gap is the point.** High *vs Skip* + negative *WAR* = a card I overrate;
 positive *WAR* + negative *vs Skip* = one I underrate. Sort by WAR and scan the
 *vs Skip* column — the cards where the two disagree are the ones worth a look.

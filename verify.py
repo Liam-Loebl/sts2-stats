@@ -508,6 +508,206 @@ def check_rankings_engine(conn: sqlite3.Connection, r: Reporter) -> None:
         r.ok("pick_rate in [0,1] and all present Elo/WAR values finite")
 
 
+def check_version_key_ordering(r: Reporter) -> None:
+    """reworks.version_key must order patches numerically, not lexically."""
+    r.header("reworks.version_key ordering (lexical-trap guard)")
+    from sts2_stats import reworks
+    vk = reworks.version_key
+    # The exact trap present in this DB: '9' > '1' lexically, but 98 < 105.
+    if vk("v0.98.1") < vk("v0.105.0"):
+        r.ok("v0.98.1 sorts before v0.105.0 (numeric, not lexical)")
+    else:
+        r.fail("version_key regressed to lexical compare (v0.98.1 >= v0.105.0)")
+    ladder = ["v0.98.1", "v0.98.3", "v0.99.1", "v0.101.0", "v0.103.0",
+              "v0.103.2", "v0.105.0", "v0.106.1", "v0.107.1"]
+    keys = [vk(b) for b in ladder]
+    if keys == sorted(keys) and len(set(keys)) == len(keys):
+        r.ok("patch ladder strictly increasing under version_key")
+    else:
+        r.fail(f"version_key ladder not strictly monotonic: {list(zip(ladder, keys))}")
+    if vk("v0.98.3") < vk("v0.101.0"):
+        r.ok("zero-padding keeps v0.98.3 < v0.101.0")
+    else:
+        r.fail("version_key padding wrong: v0.98.3 not < v0.101.0")
+    # Suffix robustness: a pre-release tag must not inflate the patch number.
+    if vk("v0.103.0-rc1") < vk("v0.103.1"):
+        r.ok("pre-release suffix ignored (v0.103.0-rc1 < v0.103.1)")
+    else:
+        r.fail("version_key mis-parses a pre-release suffix (concatenated digits)")
+    if vk("garbage") == (0, 0, 0, 0) and vk("") == (0, 0, 0, 0) and vk(None) == (0, 0, 0, 0):
+        r.ok("unparseable/empty/None build_id -> (0,0,0,0) sentinel, never raises")
+    else:
+        r.fail("version_key does not return the (0,0,0,0) sentinel for bad input")
+
+
+def check_apply_filters_build_ids(r: Reporter) -> None:
+    """The 'Minimum patch' filter must emit a correct, binding-safe IN clause."""
+    r.header("queries.apply_filters build_ids clause")
+    from sts2_stats import queries
+    # Disable every other clause so build_ids is the only thing in the WHERE.
+    base = {"mode": "both", "game_mode": "all", "include_abandoned": True}
+    bids = ["v0.105.0", "v0.106.0", "v0.107.0"]
+    where, params = queries.apply_filters({**base, "build_ids": bids})
+    expected = "WHERE r.build_id IN (" + ",".join("?" * len(bids)) + ")"
+    if where == expected and params == bids:
+        r.ok(f"build_ids -> correct IN clause with {len(bids)} bound params in order")
+    else:
+        r.fail(f"build_ids clause/params wrong: where={where!r} params={params!r}")
+    if where.count("?") == len(params):
+        r.ok("placeholder count == param count (no binding mismatch)")
+    else:
+        r.fail(f"placeholder/param mismatch: {where.count('?')} vs {len(params)}")
+    for empty in ([], None):
+        w, p = queries.apply_filters({**base, "build_ids": empty})
+        if w == "" and p == []:
+            r.ok(f"build_ids={empty!r} -> no clause, no params")
+        else:
+            r.fail(f"build_ids={empty!r} leaked a clause: where={w!r} params={p!r}")
+
+
+def check_event_excluded_boundary(r: Reporter) -> None:
+    """reworks.event_excluded: == valid_from kept, < excluded, unknown/bad fail open."""
+    r.header("reworks.event_excluded boundary semantics")
+    from sts2_stats import reworks
+    rw = reworks._reworks()
+    if not rw:
+        r.fail("card_reworks.json produced no entries - event_excluded untestable")
+        return
+    cid, vf = next(iter(rw.items()))  # a real (card_id, valid_from)
+    vk = reworks.version_key
+    ex = reworks.event_excluded
+    checks = [
+        (ex(cid, vf) is False, f"{cid}: build == valid_from ({vf}) is KEPT"),
+        (ex(cid, "v0.0.0") is True, f"{cid}: far-older build is EXCLUDED"),
+        (ex(cid, "v9.999.0") is False, f"{cid}: far-newer build is KEPT"),
+        (ex("CARD.__NOT_A_CARD__", "v0.1.0") is False, "unlisted card is KEPT"),
+        (ex(cid, "garbage!!") is False, "unparseable build fails OPEN (kept)"),
+        (ex(cid, None) is False, "None build fails OPEN (kept)"),
+        (ex(cid, "") is False, "empty build fails OPEN (kept)"),
+    ]
+    for ok, msg in checks:
+        (r.ok if ok else r.fail)(msg)
+    if vk("v0.0.0") < vk(vf) < vk("v9.999.0"):
+        r.ok("boundary fixtures bracket the valid_from version")
+    else:
+        r.fail(f"test fixtures do not bracket valid_from {vf} - boundary check vacuous")
+
+
+def check_card_reworks_file_valid(r: Reporter) -> None:
+    """card_reworks.json must be valid JSON with every value a real version."""
+    r.header("card_reworks.json is valid and every value is a parseable version")
+    from sts2_stats import reworks
+    path = reworks._PATH
+    if not path.exists():
+        r.note("card_reworks.json not found - skipping")
+        return
+    try:
+        raw = json.loads(path.read_text(encoding="utf-8"))
+    except json.JSONDecodeError as e:
+        r.fail(f"card_reworks.json is not valid JSON: {e}")
+        return
+    if not isinstance(raw, dict):
+        r.fail("card_reworks.json top level is not an object")
+        return
+    r.ok("card_reworks.json parses as a JSON object")
+    entries = reworks._reworks()  # underscore keys / non-str values already filtered
+    if not entries:
+        r.fail("card_reworks.json has no usable card entries (filter is a silent no-op)")
+        return
+    r.ok(f"{len(entries)} card entr(y/ies) loaded")
+    bad_key = [k for k in entries if not k.startswith("CARD.")]
+    if bad_key:
+        r.note(f"{len(bad_key)} key(s) not in CARD.* form: {bad_key[:5]}")
+    bad_ver = [(k, v) for k, v in entries.items() if reworks.version_key(v) == (0, 0, 0, 0)]
+    if bad_ver:
+        r.fail(f"{len(bad_ver)} value(s) parse to the (0,0,0,0) sentinel: {bad_ver[:5]}")
+    else:
+        r.ok("every valid_from value parses to a real (non-sentinel) version")
+
+
+def check_rankings_respects_reworks(conn: sqlite3.Connection, r: Reporter) -> None:
+    """A reworked card's offers must never exceed its post-valid_from in-scope events."""
+    r.header("rankings honors card_reworks.json (no excluded-era inflation)")
+    from sts2_stats import rankings, reworks
+    rw = reworks._reworks()
+    if not rw:
+        r.note("no reworks configured - skipping")
+        return
+    filters = {"mode": "solo", "game_mode": "standard", "include_abandoned": False,
+               "ascension_min": 0, "character": None}
+    res = rankings.compute_rankings(conn, filters)
+    rows = conn.execute(
+        "SELECT ce.card_id, r.build_id, COUNT(*) "
+        "FROM card_events ce JOIN runs r ON r.run_id = ce.run_id "
+        "WHERE r.is_multiplayer = 0 AND r.game_mode = 'standard' AND r.was_abandoned = 0 "
+        "AND ce.source_type IN ('monster','elite','boss','ancient') "
+        "GROUP BY ce.card_id, r.build_id"
+    ).fetchall()
+    allowed: dict[str, int] = {}
+    for cid, bid, n in rows:
+        if not reworks.event_excluded(cid, bid):
+            allowed[cid] = allowed.get(cid, 0) + n
+    over = []
+    reworked = 0
+    for x in res["rows"]:
+        if x["card_id"] not in rw:
+            continue
+        reworked += 1
+        if x["offers"] > allowed.get(x["card_id"], 0):
+            over.append((x["card"], x["offers"], allowed.get(x["card_id"], 0)))
+    if over:
+        ex = over[0]
+        r.fail(f"{len(over)} reworked card(s) have offers above their post-rework in-scope "
+               f"count: e.g. {ex[0]} offers={ex[1]} > allowed={ex[2]}")
+    else:
+        r.ok(f"all {reworked} reworked card(s): offers within post-valid_from in-scope events")
+    dropped = sum(n for cid, bid, n in rows if cid in rw and reworks.event_excluded(cid, bid))
+    if dropped:
+        r.ok(f"{dropped} pre-rework in-scope event(s) excluded - filter is live on this DB")
+    else:
+        r.note("no pre-rework events present in DB - exclusion path not exercised")
+
+
+def check_build_ids_monotonic(conn: sqlite3.Connection, r: Reporter) -> None:
+    """Raising the patch cutoff can only ever remove runs (subset narrowing)."""
+    r.header("build_ids filter is a monotonic subset narrowing")
+    from sts2_stats import queries, reworks
+    versions = sorted(
+        (b for (b,) in conn.execute(
+            "SELECT DISTINCT build_id FROM runs WHERE build_id IS NOT NULL AND build_id != ''")),
+        key=reworks.version_key)
+    if len(versions) < 2:
+        r.note("fewer than 2 build_ids in DB - skipping")
+        return
+    base = {"mode": "both", "game_mode": "all", "include_abandoned": True}
+
+    def run_ids(bids):
+        where, params = queries.apply_filters({**base, "build_ids": bids})
+        return {row[0] for row in conn.execute(f"SELECT r.run_id FROM runs r {where}", params)}
+
+    full = run_ids(None)
+    prev_set, prev_cut, ok = full, None, True
+    for v in versions:
+        cutoff = reworks.version_key(v)
+        bids = [b for b in versions if reworks.version_key(b) >= cutoff]
+        cur = run_ids(bids)
+        if not cur <= full:
+            ok = False
+            r.fail(f"cutoff {v}: result not a subset of unfiltered")
+            break
+        if prev_cut is not None and not cur <= prev_set:
+            ok = False
+            r.fail(f"cutoff {v} added runs vs {prev_cut} (non-monotonic)")
+            break
+        prev_set, prev_cut = cur, v
+    if ok:
+        r.ok(f"run set shrinks monotonically across {len(versions)} cutoffs")
+    if run_ids(list(versions)) == full:
+        r.ok("lowest cutoff (all build_ids) reproduces the unfiltered run set")
+    else:
+        r.fail("all-build_ids filter != unfiltered set (clause changes matching)")
+
+
 def check_idempotency(r: Reporter) -> None:
     r.header("Idempotency: re-import doesn't change counts")
 
@@ -812,8 +1012,14 @@ def main() -> int:
         check_floor_math(conn, r)
         check_against_source(conn, r)
         check_rankings_engine(conn, r)
+        check_rankings_respects_reworks(conn, r)
+        check_build_ids_monotonic(conn, r)
     finally:
         conn.close()
+    check_version_key_ordering(r)
+    check_apply_filters_build_ids(r)
+    check_event_excluded_boundary(r)
+    check_card_reworks_file_valid(r)
     check_idempotency(r)
     check_tone(r, [DB_PATH.parent / "README.md", DB_PATH.parent / "SPEC.md"])
 

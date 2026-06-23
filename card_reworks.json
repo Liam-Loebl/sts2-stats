@@ -1,5 +1,5 @@
 {
-  "_comment": "Card-rebalance valid-from list: card_id -> build its CURRENT form is valid from; earlier events are excluded so the table shows only the latest version. Derived from Jorbs StS2 CardStats version-era ranges (he splits a card into a new era on any model change: effect, cost, numbers, or rarity), using each card home character and ignoring zero-data placeholder rows. Cards not listed use all their data. Underscore keys are notes, ignored.",
+  "_comment": "Card-rebalance valid-from list: card_id -> the build its CURRENT form is valid from; earlier events for that card_id are excluded so the table shows only the latest version. The runtime filter (sts2_stats/reworks.py) keys on card_id alone, not character. Values were derived from Jorbs' StS2 CardStats version-era ranges (he splits a card into a new era on any model change: effect, cost, numbers, or rarity), reading each card's home-character row and ignoring zero-data placeholder rows. Cards not listed use all their data. Underscore keys are notes, ignored.",
   "_source": "Jorbs public StS2 spreadsheet CardStats Version column, pulled 2026-06-22.",
   "CARD.ACROBATICS": "v0.103.0",
   "CARD.ALIGNMENT": "v0.100.0",
