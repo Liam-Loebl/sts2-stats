@@ -154,6 +154,9 @@ def _run_elo(groups: list[dict], runs: dict[int, dict]) -> tuple[dict, dict]:
     """
     ratings: dict[str, dict[str, float]] = defaultdict(lambda: defaultdict(lambda: ELO_INITIAL))
     counts: dict[str, dict[str, int]] = defaultdict(lambda: defaultdict(int))
+    # Per-entity rating trajectory, oldest->newest, for the Elo-over-time chart:
+    # history[char][entity] = [rating after each match that entity played].
+    history: dict[str, dict[str, list]] = defaultdict(lambda: defaultdict(list))
 
     # Oldest -> newest by (run start_time, act, map point within act).
     def _order(g: dict) -> tuple:
@@ -219,13 +222,16 @@ def _run_elo(groups: list[dict], runs: dict[int, dict]) -> tuple[dict, dict]:
             deltas[loser] += ELO_K * (0.0 - (1.0 - exp_w))
         for entity, d in deltas.items():
             pool[entity] += d
+        # Record each moved entity's post-update rating for the Elo-over-time chart.
+        for entity in deltas:
+            history[char][entity].append(pool[entity])
 
         # Group participation counts (for the N shown next to Elo).
         counts[char][winner] += 1
         for loser in losers:
             counts[char][loser] += 1
 
-    return ratings, counts
+    return ratings, counts, history
 
 
 # ---------------------------------------------------------------------------
@@ -337,7 +343,7 @@ def compute_rankings(
 
     # groups now holds only valid (non-stale) rewards — stale ones were skipped above.
     valid_groups = list(groups.values())
-    ratings, elo_counts = _run_elo(valid_groups, runs)
+    ratings, elo_counts, elo_history = _run_elo(valid_groups, runs)
 
     def _skip_rating(ch: str, act_no: int) -> float:
         return ratings.get(ch, {}).get(_skip_key(act_no), ELO_INITIAL)
@@ -377,6 +383,21 @@ def compute_rankings(
                     "war_shrunk": (w - e) / (n + WAR_SHRINKAGE_K),
                     "n": n,
                 }
+
+        # Per-act offers/picks/pick%/WAR for the per-card detail page. Offers come
+        # from every act the card was offered in; picks/WAR reuse war_act (its N is
+        # picks-with-baseline, which equals picks since every pick has a baseline).
+        by_act: dict[int, dict] = {}
+        for act_no in sorted(offers_act.get(key, {})):
+            o = offers_act[key][act_no]
+            cell = war_act[key].get(act_no)
+            p = cell[2] if cell else 0
+            by_act[act_no] = {
+                "offers": o,
+                "picks": p,
+                "pick_rate": (p / o) if o else 0.0,
+                "war": ((cell[0] - cell[1]) / (cell[2] + WAR_SHRINKAGE_K)) if cell and cell[2] else None,
+            }
 
         prs = picked_runs.get(key, set())
         runs_picked = len(prs)
@@ -428,6 +449,7 @@ def compute_rankings(
             "war": war_shrunk,           # the displayed WAR (shrunk)
             "war_n": n_war,
             "war_by_act": war_by_act,
+            "by_act": by_act,
             "elo": elo_val,              # raw rating, or None if it never competed
             "elo_vs_skip": vs_skip,      # shrunk preference vs the skip line, None if never competed
             "elo_vs_skip_raw": vs_skip_raw,
@@ -513,6 +535,9 @@ def compute_rankings(
         "p0": p0,
         "p_winpicked": p_winpicked,
         "skip_elo": skip_elo_meta,
+        # Elo trajectory per (character, entity) for the per-card Elo-over-time chart,
+        # as plain nested dicts: elo_history[char][card_id] = [rating after each match].
+        "elo_history": {ch: dict(ents) for ch, ents in elo_history.items()},
         "war_shrinkage_k": WAR_SHRINKAGE_K,
         "winrate_prior_m": WINRATE_PRIOR_M,
         "elo_k": ELO_K,

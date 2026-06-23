@@ -507,6 +507,21 @@ def check_rankings_engine(conn: sqlite3.Connection, r: Reporter) -> None:
     else:
         r.ok("pick_rate in [0,1] and all present Elo/WAR values finite")
 
+    # 7. Elo trajectory (Phase 4): for every card that competed, the recorded
+    #    history has exactly elo_n entries and ends at the card's final rating.
+    hist = meta.get("elo_history", {})
+    bad_traj = []
+    for x in rows:
+        if x["elo_n"] > 0:
+            seq = hist.get(x["character"], {}).get(x["card_id"], [])
+            if len(seq) != x["elo_n"] or not seq or abs(seq[-1] - x["elo"]) > 1e-9:
+                bad_traj.append(x["card"])
+    if bad_traj:
+        r.fail(f"{len(bad_traj)} card(s) have Elo trajectory mismatched to elo_n/final "
+               f"rating: {bad_traj[:3]}")
+    else:
+        r.ok("Elo trajectory length == elo_n and ends at the final rating")
+
 
 def check_version_key_ordering(r: Reporter) -> None:
     """reworks.version_key must order patches numerically, not lexically."""

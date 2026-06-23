@@ -29,6 +29,7 @@ mode, palette = dc.apply_theme()
 nav = st.navigation([
     st.Page("views/overview.py", title="Overview", default=True),
     st.Page("views/card_rankings.py", title="Card Rankings"),
+    st.Page("views/card_detail.py", title="Card Detail"),
 ])
 
 dc.import_on_load()
