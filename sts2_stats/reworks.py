@@ -49,6 +49,15 @@ def _parse_build(build_id) -> tuple[int, ...] | None:
     return tuple(out[:4])
 
 
+def version_key(build_id) -> tuple[int, ...]:
+    """Sortable version tuple for a build id (e.g. 'v0.103.0' -> (0,103,0,0)).
+
+    Unparseable / missing ids sort first as (0,0,0,0). Public helper so the
+    dashboard can order/compare patch versions without reaching into the
+    private parser (lexical build_id sort is wrong: 'v0.98.1' > 'v0.105.0')."""
+    return _parse_build(build_id) or (0, 0, 0, 0)
+
+
 def event_excluded(card_id: str, build_id) -> bool:
     """True if this card event predates the card's valid-from build (a rework)."""
     valid_from = _reworks().get(card_id)

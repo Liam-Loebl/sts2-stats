@@ -24,6 +24,7 @@ from pathlib import Path
 
 import streamlit as st
 
+from sts2_stats import reworks
 from sts2_stats.db import connect
 from sts2_stats.importer import import_all
 from theme import PALETTES, get_css, register_altair_theme
@@ -146,11 +147,40 @@ def render_sidebar(mode: str, palette: dict) -> dict:
     include_abandoned = st.sidebar.checkbox("Include abandoned runs", value=False, key="_abandoned_cb")
     ascension_min = st.sidebar.slider("Minimum ascension", 0, 10, 0, key="_ascension_slider")
 
+    # Patch window — restrict every stat to runs from a chosen game version
+    # onward. A discrete select_slider over the versions actually present (not a
+    # numeric slider: versions aren't evenly spaced and build_id sorts wrong
+    # lexically). "All" = no filter. We pass the qualifying build_ids (not the
+    # cutoff) because build_id can't be range-compared in SQL.
+    pconn = connect_db()
+    try:
+        versions = sorted(
+            (b for (b,) in pconn.execute(
+                "SELECT DISTINCT build_id FROM runs WHERE build_id IS NOT NULL AND build_id != ''")),
+            key=reworks.version_key,
+        )
+    finally:
+        pconn.close()
+    build_ids = None
+    if versions:
+        patch_choice = st.sidebar.select_slider(
+            "Minimum patch",
+            options=["All", *versions],
+            value="All",
+            key="_patch_min_slider",
+            help="Only include runs from this game version onward.",
+        )
+        if patch_choice != "All":
+            cutoff = reworks.version_key(patch_choice)
+            build_ids = [b for b in versions if reworks.version_key(b) >= cutoff]
+
     filters = {
         "mode": mode_map[mode_label],
         "game_mode": game_mode_map[game_mode_label],
         "include_abandoned": include_abandoned,
         "ascension_min": ascension_min,
+        # None = all patches; else the list of build_ids at/after the chosen patch.
+        "build_ids": build_ids,
         # Character is chosen per-page: Card Rankings has its own Overall / per-
         # character control, and the Overview always shows all five characters.
         # (A second sidebar Character control silently diverged from the board's.)

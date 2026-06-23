@@ -16,6 +16,8 @@ All functions accept the standard `filters` dict:
       "include_abandoned": bool,            # default False
       "ascension_min": int,                 # default 0
       "character": str | None,              # default None (all characters)
+      "build_ids": list[str] | None,        # default None (all patches); else
+                                            #   restrict to these build_ids
     }
 
 Defensive: when no runs match the filters, callers get zeros / empty lists
@@ -39,6 +41,7 @@ _DEFAULTS: dict[str, Any] = {
     "include_abandoned": False,
     "ascension_min": 0,
     "character": None,
+    "build_ids": None,
 }
 
 
@@ -89,6 +92,15 @@ def apply_filters(filters: dict) -> tuple[str, list]:
     if character is not None:
         clauses.append("r.character = ?")
         params.append(character)
+
+    # Patch window: restrict to a set of build_ids (computed sidebar-side from a
+    # chosen "from version onward" cutoff, since build_id can't be range-compared
+    # in SQL). None / empty -> no restriction.
+    build_ids = f.get("build_ids")
+    if build_ids:
+        placeholders = ",".join("?" * len(build_ids))
+        clauses.append(f"r.build_id IN ({placeholders})")
+        params.extend(build_ids)
 
     if not clauses:
         return "", []
