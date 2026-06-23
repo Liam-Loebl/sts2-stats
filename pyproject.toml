@@ -1,0 +1,15 @@
+[project]
+name = "sts2-stats"
+version = "0.1.0"
+description = "Slay the Spire 2 run-history stats dashboard (Streamlit)"
+readme = "README.md"
+requires-python = ">=3.11"
+license = { file = "LICENSE" }
+dependencies = [
+    "streamlit>=1.50",
+    "pandas>=2.0",
+    "altair>=5.0",
+]
+
+[tool.uv]
+package = false
