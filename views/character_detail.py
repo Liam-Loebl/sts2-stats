@@ -33,13 +33,41 @@ dc.page_header("Character Detail")
 # ---------------------------------------------------------------------------
 
 keys = list(dc.CHARACTERS)
+
+# One-shot hand-off from the Overview "Detail →" button.
 pre = st.session_state.pop("detail_character", None)
 if pre in keys:
-    st.session_state["_detail_char_select"] = pre
-if st.session_state.get("_detail_char_select") not in keys:
-    st.session_state["_detail_char_select"] = keys[0]
+    st.session_state["_detail_char"] = pre
+if st.session_state.get("_detail_char") not in keys:
+    st.session_state["_detail_char"] = keys[0]
 
-char = st.selectbox("Character", keys, format_func=pretty_character_name, key="_detail_char_select")
+# Character picker: five buttons (one per character) instead of a dropdown. Each
+# carries its identity color as a top stripe; the active character is filled.
+_btn_stripes = "\n".join(
+    f'.st-key-charbtn_{c.replace("CHARACTER.", "")} button {{ border-top: 3px solid {_CHAR_COLOR[c]}; }}'
+    for c in keys
+)
+st.markdown(
+    "<style>"
+    '[class*="st-key-charbtn_"] button { padding: 0.8rem 0.4rem; font-weight: 600; border-radius: 10px; }'
+    + _btn_stripes
+    + "</style>",
+    unsafe_allow_html=True,
+)
+dc.eyebrow("Character")
+_btn_cols = st.columns(len(keys), gap="small")
+for _col, _c in zip(_btn_cols, keys):
+    with _col:
+        if st.button(
+            pretty_character_name(_c),
+            key=f"charbtn_{_c.replace('CHARACTER.', '')}",
+            width="stretch",
+            type="primary" if _c == st.session_state["_detail_char"] else "secondary",
+        ):
+            st.session_state["_detail_char"] = _c
+            st.rerun()
+
+char = st.session_state["_detail_char"]
 color = _CHAR_COLOR.get(char, palette["accent"])
 char_filters = {**filters, "character": char}
 
