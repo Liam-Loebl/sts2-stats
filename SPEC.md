@@ -68,15 +68,17 @@ picking 1 card from a choice of options after most fights, fighting toward a bos
 
 StS2 is a Godot / C# game. It writes one plain-JSON file per run, unencrypted.
 
-**Location (Windows):**
+**Location (auto-detected per OS — Windows native; macOS/Linux added in PR #1):**
 ```
-%APPDATA%\SlayTheSpire2\steam\<steamid>\profile1\saves\history\<unix_start_time>.run
+Windows: %APPDATA%\SlayTheSpire2\steam\<steamid>\profile1\saves\history\<unix_start_time>.run
+macOS:   ~/Library/Application Support/Steam/userdata/<id>/2868840/remote/profile*/saves/history
+Linux:   <steam-root>/userdata/<id>/2868840/remote/profile*/saves/history   (~/.local/share/Steam or ~/.steam/steam)
 ```
-- Example shape:
-  `C:\Users\<you>\AppData\Roaming\SlayTheSpire2\steam\<steamid>\profile1\saves\history\`
+- Windows example shape:
+  `C:\Users\<you>\AppData\Roaming\SlayTheSpire2\steam\<steamid>\profile1\saves\history\`.
 - Filename = run's unix start time, e.g. `1779397791.run`.
-- Auto-detect by globbing `%APPDATA%\SlayTheSpire2\steam\*\profile*\saves\history`.
-  Never hardcode the username or steamid; they differ per machine.
+- Auto-detect by globbing each layout (`sts2_stats/paths.py`: `find_history_dirs()` over `_history_globs()`);
+  `2868840` is the StS2 Steam app id. Never hardcode the username, steamid, or profile — they differ per machine and OS.
 - Ignore `*.run.backup` (dupes, ~75 of them), `current_run.*.corrupt` (in-progress), `profile1/replays/*.mcr` (binary).
 - **151 valid `.run` files** as of 2026-06-22 (98 solo + 53 co-op). Drifts as the user plays.
 
@@ -94,6 +96,9 @@ Parser must tolerate schema/version changes across patches. Top-level fields:
   (e.g. `.../steam/<steamid>/profile1/...` → `<steamid>`). In any run (solo or co-op),
   the local user is `players[i]` where `str(players[i].id) == local_steam_id`. Fallback: `players[0]`.
   100% of co-op runs in this dataset have the local user at index 0 (the save-writing client writes itself first).
+  Caveat: only the Windows path carries the 17-digit Steam ID; the macOS/Linux `userdata/<id>` segment is the
+  32-bit account id, so `steam_id_from_path` returns None there and co-op resolution always uses the `players[0]`
+  fallback (reliable in this dataset). Resolving the macOS/Linux account-id form is a possible follow-up.
   Important: `player_stats` arrays inside each map point are index-aligned with `players[]`, so once you
   resolve the local user's index `i`, use `player_stats[i]` for that user's per-room stats.
 - `map_point_history`: array of acts → array of map points (rooms). Outer index = act number.
@@ -364,7 +369,7 @@ extraction effort unknown); pick-rate-vs-win-rate scatter.
 
 I play on both a laptop and a desktop. Steam Cloud syncs the `.run` files to both, so each
 has the full history locally.
-- Auto-detect the save path (glob); never hardcode user/steamid.
+- Auto-detect the save path (glob) across Windows / macOS / Linux Steam layouts; never hardcode user/steamid/profile.
 - Idempotent import keyed on run id, so each machine builds its own local DB from its synced files;
   both DBs converge to identical stats.
 - DB is local + rebuildable per machine. Do not sync the SQLite DB itself via OneDrive/Dropbox
