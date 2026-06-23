@@ -30,6 +30,7 @@ nav = st.navigation([
     st.Page("views/overview.py", title="Overview", default=True),
     st.Page("views/card_rankings.py", title="Card Rankings"),
     st.Page("views/card_detail.py", title="Card Detail"),
+    st.Page("views/character_detail.py", title="Character Detail"),
 ])
 
 dc.import_on_load()
