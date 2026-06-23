@@ -380,7 +380,7 @@ has the full history locally.
    Then sanity-check together: total runs, win rate, runs per character, multiplayer/custom counts.
 2. **Overview dashboard** (done): first thing to open and react to.
 3. **Card rankings board** (done): pick%, win%, WAR, Elo (sortable; N shown; shrinkage; coloring).
-4. **Per-card / per-character detail pages** (next).
+4. **Per-card / per-character detail pages** (done): `views/card_detail.py` + `views/character_detail.py`, reachable from the nav and from "Detail →" buttons on the board / Overview.
 5. **Auto-update watcher.**
 6. **Relics / potions + polish + stretch features.**
 

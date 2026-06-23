@@ -2,7 +2,7 @@
 
 > A local-first stats tool for my Slay the Spire 2 runs, built to find which cards I overrate and which I should be picking more.
 
-Status: Phases 1–3 complete — data ingest, Overview dashboard, and the Card Rankings board (WAR + Elo). Phase 4 (per-card / per-character detail pages) is next.
+Status: Phases 1–4 complete — data ingest, Overview dashboard, the Card Rankings board (WAR + Elo), and per-card / per-character detail pages. Phase 5 (live refresh + relics/potions) is next.
 
 ## The story
 
@@ -41,7 +41,7 @@ I'm building it because I want to use it to get better at the game, and because 
 - Filterable by character and act, with the full methodology written out in plain language on the page.
 - The app is now multipage (Overview + Card Rankings) via Streamlit navigation, with the theme and filters shared across both pages.
 
-Phase 4 — per-card and per-character detail pages — comes next.
+**Detail pages (Phase 4):** open any card or character (the nav tabs, or the "Detail →" buttons on the board and Overview) for a focused view. Per-card: act splits, Elo over time, and an Elo-vs-WAR map. Per-character: win-rate trend, damage curve, and that character's best and worst cards by WAR.
 
 ## The interesting parts
 
@@ -103,7 +103,7 @@ A few design choices worth flagging:
 - [x] **Phase 1 — Ingest.** Parser, SQLite schema, idempotent importer, sanity-report CLI.
 - [x] **Phase 2 — Overview dashboard.** Streamlit app with the topline numbers, five character tiles, rolling win-rate trend, damage-per-act chart, and a filter sidebar.
 - [x] **Phase 3 — Card rankings board.** Pick%, win%, WAR, Elo, all sortable, sample size shown, shrinkage applied to low-N cards.
-- [ ] **Phase 4 — Per-card and per-character detail pages.** WAR by act, Elo over time, Elo-vs-WAR scatter.
+- [x] **Phase 4 — Per-card and per-character detail pages.** WAR by act, Elo over time, Elo-vs-WAR scatter; per-character win-rate trend, damage curve, and best/worst cards.
 - [ ] **Phase 5 — Live refresh + the rest of the game.** Folder watcher so the dashboard updates as runs finish; relic and potion analytics on the same metric framework.
 
 ## Setup
