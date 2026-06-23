@@ -108,6 +108,8 @@ st.markdown(
     unsafe_allow_html=True,
 )
 
+dc.sample_warning(row["offers"], floor=10, noun="offers", palette=palette)
+
 m = st.columns(6, gap="small")
 with m[0]:
     dc.metric_card("Pick %", _pct(row["pick_rate"]), secondary=True)

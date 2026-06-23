@@ -230,6 +230,29 @@ def eyebrow(text: str) -> None:
     st.markdown(f'<div class="eyebrow">{html.escape(text)}</div>', unsafe_allow_html=True)
 
 
+def sample_warning(n: int | None, *, floor: int = 10, noun: str = "offers", palette: dict) -> bool:
+    """Render a 'small sample' caution banner when `n` is below the offer floor.
+
+    Keeps the detail pages honest: the Card Rankings board hides anything below the
+    floor rather than showing it at face value, so a detail page must flag when its
+    own numbers fall below that same bar. Returns True if a warning was shown.
+    """
+    if n is None or n >= floor:
+        return False
+    neg = palette["negative"]
+    st.markdown(
+        f'<div style="border-left:3px solid {neg};'
+        f"background:color-mix(in srgb, {neg} 10%, transparent);"
+        f'color:{palette["text_primary"]};padding:0.5rem 0.75rem;border-radius:8px;'
+        f'margin:0.3rem 0 0.85rem;font-size:13px;line-height:1.45;">'
+        f"<strong>Small sample.</strong> Only {n} {html.escape(noun)} — read these as noise, "
+        f"not signal. The Card Rankings board hides anything below {floor} {html.escape(noun)} "
+        f"for this reason; the numbers are shown here with N so you can judge for yourself.</div>",
+        unsafe_allow_html=True,
+    )
+    return True
+
+
 def metric_card(
     label: str,
     value: str,

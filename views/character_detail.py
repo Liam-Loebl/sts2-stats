@@ -79,6 +79,8 @@ if total == 0:
 # Headline metrics
 # ---------------------------------------------------------------------------
 
+dc.sample_warning(total, floor=10, noun="runs", palette=palette)
+
 avg_floors = per["avg_floors_reached"] if per else 0.0
 top_asc = top["most_played_ascension"]
 
