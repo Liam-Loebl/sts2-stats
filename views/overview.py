@@ -97,22 +97,6 @@ for col, char, color in zip(char_cols, dc.CHARACTERS, CHARACTER_RANGE):
     with col:
         dc.character_tile(short, row, selected=is_selected, color=color)
 
-# Entry point to the per-character detail page (the tiles are HTML and can't fire
-# a callback, so a selectbox + button hands the choice off via session_state).
-_chars_with_runs = [c for c in dc.CHARACTERS if c in per_char_by_name]
-if _chars_with_runs:
-    _e1, _e2 = st.columns([5, 1], gap="small")
-    with _e1:
-        _pick_char = st.selectbox(
-            "Inspect a character", _chars_with_runs,
-            format_func=lambda c: c.replace("CHARACTER.", "").title(),
-            key="_ov_inspect_char", label_visibility="collapsed",
-        )
-    with _e2:
-        if st.button("Detail →", key="_ov_inspect_btn", width="stretch"):
-            st.session_state["detail_character"] = _pick_char
-            st.switch_page("views/character_detail.py")
-
 
 # ---------------------------------------------------------------------------
 # Trends — rolling win rate (left) + damage per act (right)
