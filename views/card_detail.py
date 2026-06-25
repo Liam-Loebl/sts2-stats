@@ -83,9 +83,12 @@ if pre in keys:
 if st.session_state.get("_detail_card_select") not in keys:
     st.session_state["_detail_card_select"] = keys[0]
 
-chosen = st.selectbox(
-    "Card", keys, format_func=lambda k: labels[k], key="_detail_card_select",
-)
+_pick_col, _ = st.columns([2, 4])
+with _pick_col:
+    chosen = st.selectbox(
+        "Card", keys, format_func=lambda k: labels[k],
+        key="_detail_card_select", label_visibility="collapsed",
+    )
 row = next((r for r in rows if (r["card_id"], r["character"]) == chosen), None)
 if row is None:
     st.markdown(
@@ -118,40 +121,42 @@ def _delta(v: float | None) -> str:
     return f"{v:+.0f}" if v is not None else "—"  # Elo-point delta
 
 
-_art_col, _title_col = st.columns([1, 4], gap="medium")
+# Hero: large card art (left) + identity and a 3x2 metric grid (right).
+_art_col, _info_col = st.columns([1, 2], gap="large")
 with _art_col:
     _img = _card_image_url(row["card_id"])
     if _img:
-        st.image(_img, width=150)
+        st.image(_img, width="stretch")
     else:
         st.markdown(
-            '<div class="chart-sub" style="opacity:0.55;padding-top:0.4rem;">(no card art)</div>',
+            f'<div style="border:2px dashed {palette["border"]};border-radius:14px;'
+            f"min-height:460px;display:flex;align-items:center;justify-content:center;"
+            f'color:{palette["text_secondary"]};font-size:13px;">no card art</div>',
             unsafe_allow_html=True,
         )
-with _title_col:
+with _info_col:
     st.markdown(
-        f'<div class="chart-title" style="font-size:21px;border-left:4px solid {color};'
-        f'padding-left:0.55rem;margin-bottom:0.1rem;">{html.escape(row["card"])}</div>'
-        f'<div class="chart-sub" style="margin-bottom:0.6rem;">{html.escape(row["character_name"])}'
+        f'<div class="chart-title" style="font-size:28px;border-left:5px solid {color};'
+        f'padding-left:0.7rem;margin-bottom:0.15rem;">{html.escape(row["card"])}</div>'
+        f'<div class="chart-sub" style="margin-bottom:0.8rem;">{html.escape(row["character_name"])}'
         f' · offered {row["offers"]}× · picked {row["picks"]}×</div>',
         unsafe_allow_html=True,
     )
-
-dc.sample_warning(row["offers"], floor=10, noun="offers", palette=palette)
-
-m = st.columns(6, gap="small")
-with m[0]:
-    dc.metric_card("Pick %", _pct(row["pick_rate"]), secondary=True)
-with m[1]:
-    dc.metric_card("Win % when picked", _pct(row["winrate_shrunk"]), secondary=True)
-with m[2]:
-    dc.metric_card("WAR", _war(row["war"]), secondary=True, accent=True)
-with m[3]:
-    dc.metric_card("Elo", _elo(row["elo"]), secondary=True)
-with m[4]:
-    dc.metric_card("vs Skip", _delta(row["elo_vs_skip"]), secondary=True)
-with m[5]:
-    dc.metric_card("Elo matches", str(row["elo_n"]), secondary=True)
+    dc.sample_warning(row["offers"], floor=10, noun="offers", palette=palette)
+    _r1 = st.columns(3, gap="small")
+    with _r1[0]:
+        dc.metric_card("Pick %", _pct(row["pick_rate"]), secondary=True)
+    with _r1[1]:
+        dc.metric_card("Win % when picked", _pct(row["winrate_shrunk"]), secondary=True)
+    with _r1[2]:
+        dc.metric_card("WAR", _war(row["war"]), secondary=True, accent=True)
+    _r2 = st.columns(3, gap="small")
+    with _r2[0]:
+        dc.metric_card("Elo", _elo(row["elo"]), secondary=True)
+    with _r2[1]:
+        dc.metric_card("vs Skip", _delta(row["elo_vs_skip"]), secondary=True)
+    with _r2[2]:
+        dc.metric_card("Elo matches", str(row["elo_n"]), secondary=True)
 
 
 # ---------------------------------------------------------------------------
