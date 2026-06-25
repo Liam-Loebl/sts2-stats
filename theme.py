@@ -112,16 +112,26 @@ def _light_widget_css(p: dict) -> str:
 .stApp div[data-baseweb="select"] > div {
     background-color: SURFACE !important;
     border-color: BORDER !important;
-    color: TEXT !important;
 }
-.stApp div[data-baseweb="select"] span { color: TEXT !important; }
+/* The selected value + typeahead text live in nested <div>/<input>, not a
+   <span>, so the old span-only rule missed them and they kept the dark-mode
+   grey. Color every text element inside the control. */
+.stApp div[data-baseweb="select"] div,
+.stApp div[data-baseweb="select"] span,
+.stApp div[data-baseweb="select"] input { color: TEXT !important; }
 .stApp div[data-baseweb="select"] svg { fill: TEXT2 !important; }
 
-/* Dropdown popover menu (the open options list) */
+/* Dropdown popover menu (the open options list) — rendered in a body portal, so
+   these selectors are global; the light-mode CSS is only injected in light mode.
+   Cover each option row AND any nested text node, not just the <li>. */
 div[data-baseweb="popover"] ul,
 div[data-baseweb="popover"] div[role="listbox"],
-ul[data-baseweb="menu"] { background-color: SURFACE !important; color: TEXT !important; }
-ul[data-baseweb="menu"] li { color: TEXT !important; }
+ul[data-baseweb="menu"] { background-color: SURFACE !important; }
+div[data-baseweb="popover"] li,
+div[data-baseweb="popover"] [role="option"],
+div[data-baseweb="popover"] [role="option"] *,
+ul[data-baseweb="menu"] li,
+ul[data-baseweb="menu"] li * { color: TEXT !important; }
 
 /* Radio + checkbox labels */
 .stApp div[data-testid="stRadio"] label,

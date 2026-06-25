@@ -162,22 +162,16 @@ def _sortval(r, key):
 
 shown_sorted = sorted(display, key=lambda r: _sortval(r, _sort_key[0]), reverse=not _sort_key[1])
 
-# Entry point to the per-card detail page. A selectbox + button (not a clickable
-# row — the table is hand-rendered HTML and can't fire a callback). The button
-# hands the (card_id, character) to the detail page via session_state, one-shot.
-_inspectable = [r for r in shown_sorted if not r.get("is_skip")]
-if _inspectable:
-    _ic1, _ic2 = st.columns([5, 1], gap="small")
-    with _ic1:
-        _pick = st.selectbox(
-            "Inspect a card", _inspectable,
-            format_func=lambda r: f"{r['card']} · {r['character_name']}",
-            key="_cr_inspect", label_visibility="collapsed",
-        )
-    with _ic2:
-        if st.button("Detail →", key="_cr_inspect_btn", width="stretch"):
-            st.session_state["detail_card"] = (_pick["card_id"], _pick["character"])
-            st.switch_page("views/card_detail.py")
+# One search box (above) filters the table. When a search is active, offer a single
+# shortcut to open the top-ranked match's detail page — so there's no second
+# search control, but the board -> card-detail jump is kept.
+if search:
+    _top = next((r for r in shown_sorted if not r.get("is_skip")), None)
+    if _top is not None and st.button(
+        f"Open detail · {_top['card']} · {_top['character_name']} →", key="_cr_open_top"
+    ):
+        st.session_state["detail_card"] = (_top["card_id"], _top["character"])
+        st.switch_page("views/card_detail.py")
 
 
 def _num_or_nan(v):
