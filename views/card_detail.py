@@ -13,11 +13,29 @@ import html
 
 import altair as alt
 import pandas as pd
+import requests
 import streamlit as st
 
 import dashboard_common as dc
 from sts2_stats import rankings
 from theme import CHARACTER_RANGE
+
+
+@st.cache_data(show_spinner=False, ttl=3600)
+def _card_image_url(card_id: str) -> str | None:
+    """untapped.gg card-art URL for a card_id, or None if it doesn't resolve.
+
+    Slug = card_id minus the CARD. prefix, lowercased, underscores -> hyphens
+    (matches untapped's scheme: CARD.CLOAK_AND_DAGGER -> cloak-and-dagger). A cached
+    HEAD check keeps a renamed/missing card from showing a broken-image icon."""
+    slug = (card_id[5:] if card_id.startswith("CARD.") else card_id).lower().replace("_", "-")
+    url = f"https://img-preview.untapped.gg/sts2/en/cards/{slug}.png"
+    try:
+        r = requests.head(url, timeout=4, allow_redirects=True)
+        return url if r.status_code == 200 else None
+    except requests.RequestException:
+        return None
+
 
 palette = st.session_state["palette"]
 filters = st.session_state["filters"]
@@ -100,13 +118,24 @@ def _delta(v: float | None) -> str:
     return f"{v:+.0f}" if v is not None else "—"  # Elo-point delta
 
 
-st.markdown(
-    f'<div class="chart-title" style="font-size:21px;border-left:4px solid {color};'
-    f'padding-left:0.55rem;margin-bottom:0.1rem;">{html.escape(row["card"])}</div>'
-    f'<div class="chart-sub" style="margin-bottom:0.6rem;">{html.escape(row["character_name"])}'
-    f' · offered {row["offers"]}× · picked {row["picks"]}×</div>',
-    unsafe_allow_html=True,
-)
+_art_col, _title_col = st.columns([1, 4], gap="medium")
+with _art_col:
+    _img = _card_image_url(row["card_id"])
+    if _img:
+        st.image(_img, width=150)
+    else:
+        st.markdown(
+            '<div class="chart-sub" style="opacity:0.55;padding-top:0.4rem;">(no card art)</div>',
+            unsafe_allow_html=True,
+        )
+with _title_col:
+    st.markdown(
+        f'<div class="chart-title" style="font-size:21px;border-left:4px solid {color};'
+        f'padding-left:0.55rem;margin-bottom:0.1rem;">{html.escape(row["card"])}</div>'
+        f'<div class="chart-sub" style="margin-bottom:0.6rem;">{html.escape(row["character_name"])}'
+        f' · offered {row["offers"]}× · picked {row["picks"]}×</div>',
+        unsafe_allow_html=True,
+    )
 
 dc.sample_warning(row["offers"], floor=10, noun="offers", palette=palette)
 
@@ -301,6 +330,6 @@ else:
 
 st.markdown(
     '<div class="app-footer">Personal Slay the Spire 2 run analytics · '
-    f'{meta["n_runs"]} runs after filters</div>',
+    f'{meta["n_runs"]} runs after filters · card art via untapped.gg</div>',
     unsafe_allow_html=True,
 )
