@@ -88,6 +88,17 @@ CREATE INDEX IF NOT EXISTS idx_rev_act   ON room_events(act_index);
 CREATE INDEX IF NOT EXISTS idx_rev_floor ON room_events(floor);
 CREATE INDEX IF NOT EXISTS idx_rev_mpt   ON room_events(map_point_type);
 
+CREATE TABLE IF NOT EXISTS relic_events (
+    id        INTEGER PRIMARY KEY AUTOINCREMENT,
+    run_id    INTEGER NOT NULL REFERENCES runs(run_id) ON DELETE CASCADE,
+    relic_id  TEXT NOT NULL,
+    floor     INTEGER NOT NULL                          -- 1-based floor_added_to_deck
+);
+
+CREATE INDEX IF NOT EXISTS idx_relic_run   ON relic_events(run_id);
+CREATE INDEX IF NOT EXISTS idx_relic_relic ON relic_events(relic_id);
+CREATE INDEX IF NOT EXISTS idx_relic_floor ON relic_events(floor);
+
 CREATE TABLE IF NOT EXISTS import_log (
     id          INTEGER PRIMARY KEY AUTOINCREMENT,
     source_file TEXT NOT NULL,
@@ -113,12 +124,13 @@ def upsert_run(
     run_row: dict,
     card_event_rows: list[dict],
     room_event_rows: list[dict] | None = None,
+    relic_event_rows: list[dict] | None = None,
 ) -> None:
-    """Insert-or-replace a run + its card events + its room events atomically.
+    """Insert-or-replace a run + its card / room / relic events atomically.
 
     Idempotent: re-importing the same file leaves the DB identical (the
-    ON DELETE CASCADE wipes prior card_events and room_events for the same
-    run_id first).
+    ON DELETE CASCADE wipes prior card_events, room_events and relic_events for
+    the same run_id first).
     """
     cur = conn.cursor()
     cur.execute("DELETE FROM runs WHERE run_id = ?", (run_row["run_id"],))
@@ -166,6 +178,14 @@ def upsert_run(
             """,
             room_event_rows,
         )
+    if relic_event_rows:
+        cur.executemany(
+            """
+            INSERT INTO relic_events (run_id, relic_id, floor)
+            VALUES (:run_id, :relic_id, :floor)
+            """,
+            relic_event_rows,
+        )
 
 
 def log_import_error(conn: sqlite3.Connection, source_file: str, error: str, when: str) -> None:
@@ -210,6 +230,7 @@ def sanity_report(conn: sqlite3.Connection) -> dict:
     out["card_events"]      = _scalar(conn, "SELECT COUNT(*) FROM card_events")
     out["card_picks"]       = _scalar(conn, "SELECT COUNT(*) FROM card_events WHERE was_picked = 1")
     out["room_events"]      = _scalar(conn, "SELECT COUNT(*) FROM room_events")
+    out["relic_events"]     = _scalar(conn, "SELECT COUNT(*) FROM relic_events")
     out["import_errors"]    = _scalar(conn, "SELECT COUNT(*) FROM import_log")
 
     # Topline solo-standard-non-abandoned win rate (recon expects ~53.8% = 49/91)
@@ -249,6 +270,7 @@ def print_sanity_report(report: dict) -> None:
     print(f"  Abandoned:               {report['abandoned']}")
     print(f"Card events stored:        {report['card_events']}  (picks: {report['card_picks']})")
     print(f"Room events stored:        {report['room_events']}")
+    print(f"Relic events stored:       {report['relic_events']}")
     print(f"Import errors logged:      {report['import_errors']}")
     print()
     if report["solo_std_winrate"] is not None:

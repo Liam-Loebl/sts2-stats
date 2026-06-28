@@ -62,8 +62,8 @@ def parse_run(
     local_steam_id: str | None,
     source_file: str,
     imported_at: str | None = None,
-) -> tuple[dict, list[dict], list[dict]]:
-    """Turn one parsed .run JSON object into (run_row, card_event_rows, room_event_rows).
+) -> tuple[dict, list[dict], list[dict], list[dict]]:
+    """Turn one .run JSON object into (run_row, card_events, room_events, relic_events).
 
     Raises RunParseError if required fields are missing or unusable.
     """
@@ -120,7 +120,8 @@ def parse_run(
 
     card_events = _extract_card_events(run_id, mph, local_idx)
     room_events = _extract_room_events(run_id, mph, local_idx)
-    return run_row, card_events, room_events
+    relic_events = _extract_relic_events(run_id, local_player)
+    return run_row, card_events, room_events, relic_events
 
 
 def _extract_card_events(run_id: int, mph: list, local_idx: int) -> list[dict]:
@@ -210,12 +211,33 @@ def _extract_room_events(run_id: int, mph: list, local_idx: int) -> list[dict]:
     return rows
 
 
+def _extract_relic_events(run_id: int, local_player: dict) -> list[dict]:
+    """One row per relic the local user finished the run holding: id + the floor
+    it was obtained (`floor_added_to_deck`). Relics are auto-acquired (no skip),
+    so there's no option set to capture like card rewards — just what was held.
+    The floor lets the engine apply the same floor-conditional WAR baseline as
+    cards (a relic only earns WAR vs runs that reached the floor it dropped on)."""
+    rows: list[dict] = []
+    relics = _get(local_player, "relics") or []
+    if not isinstance(relics, list):
+        return rows
+    for r in relics:
+        if not isinstance(r, dict):
+            continue
+        relic_id = r.get("id")
+        floor = r.get("floor_added_to_deck")
+        if not relic_id or floor is None:
+            continue
+        rows.append({"run_id": run_id, "relic_id": relic_id, "floor": int(floor)})
+    return rows
+
+
 def parse_file(
     path: Path,
     *,
     local_steam_id: str | None,
     imported_at: str | None = None,
-) -> tuple[dict, list[dict], list[dict]]:
+) -> tuple[dict, list[dict], list[dict], list[dict]]:
     """Convenience: read + parse a .run file from disk."""
     with Path(path).open("r", encoding="utf-8") as f:
         data = json.load(f)

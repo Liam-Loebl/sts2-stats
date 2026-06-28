@@ -216,6 +216,29 @@ def check_db_invariants(conn: sqlite3.Connection, r: Reporter) -> None:
     else:
         r.ok("every reached run has at least one room_event")
 
+    # Phase 6 relic_events invariants
+    rtotal = conn.execute("SELECT COUNT(*) FROM relic_events").fetchone()[0]
+    if rtotal == 0:
+        r.note("relic_events table is empty (Relics page will have no data)")
+    else:
+        r.ok(f"relic_events populated ({rtotal} rows)")
+        orph = conn.execute(
+            "SELECT COUNT(*) FROM relic_events re LEFT JOIN runs r ON re.run_id = r.run_id "
+            "WHERE r.run_id IS NULL"
+        ).fetchone()[0]
+        if orph:
+            r.fail(f"{orph} relic_events row(s) reference a missing run_id")
+        else:
+            r.ok("every relic_events row references a real run_id")
+        badf = conn.execute(
+            "SELECT COUNT(*) FROM relic_events re JOIN runs r ON re.run_id = r.run_id "
+            "WHERE re.floor < 1 OR re.floor > r.floors_reached"
+        ).fetchone()[0]
+        if badf:
+            r.fail(f"{badf} relic_events row(s) have floor out of [1, floors_reached]")
+        else:
+            r.ok("relic_events floor within [1, floors_reached] on every row")
+
 
 def check_coop_identification(conn: sqlite3.Connection, r: Reporter) -> None:
     r.header("Co-op local-user identification (all co-op runs)")
@@ -521,6 +544,41 @@ def check_rankings_engine(conn: sqlite3.Connection, r: Reporter) -> None:
                f"rating: {bad_traj[:3]}")
     else:
         r.ok("Elo trajectory length == elo_n and ends at the final rating")
+
+
+def check_relic_engine(conn: sqlite3.Connection, r: Reporter) -> None:
+    r.header("Phase 6 relic rankings engine")
+    import math as _m
+
+    from sts2_stats import relics
+
+    filters = {
+        "mode": "solo", "game_mode": "standard", "include_abandoned": False,
+        "ascension_min": 0, "character": None,
+    }
+    try:
+        res = relics.compute_relic_rankings(conn, filters)
+    except Exception as e:  # noqa: BLE001 — surface any engine crash as a FAIL
+        r.fail(f"compute_relic_rankings raised: {e!r}")
+        return
+    rows = res["rows"]
+    if not rows:
+        r.note("no in-scope relics — skipping relic engine checks")
+        return
+    r.ok(f"engine ran ({res['meta']['n_relics']} relics over {res['meta']['n_events']} obtains)")
+    # war_n == obtained: each obtain's run reached the relic's floor, so the
+    # floor baseline always has support (mirrors the card war_n == picks check).
+    bad = [x for x in rows if x["war_n"] != x["obtained"]]
+    if bad:
+        r.fail(f"{len(bad)} relic(s) have war_n != obtained (an obtain lost its baseline)")
+    else:
+        r.ok("WAR baseline present for every obtain (war_n == obtained)")
+    problems = [x["relic"] for x in rows
+                if x["war"] is not None and not _m.isfinite(x["war"])]
+    if problems:
+        r.fail(f"{len(problems)} relic(s) with non-finite WAR: {problems[:3]}")
+    else:
+        r.ok("all present relic WAR values finite")
 
 
 def check_version_key_ordering(r: Reporter) -> None:
@@ -1029,6 +1087,7 @@ def main() -> int:
         check_rankings_engine(conn, r)
         check_rankings_respects_reworks(conn, r)
         check_build_ids_monotonic(conn, r)
+        check_relic_engine(conn, r)
     finally:
         conn.close()
     check_version_key_ordering(r)

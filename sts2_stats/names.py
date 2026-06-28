@@ -64,3 +64,12 @@ def pretty_character_name(char_id: str | None) -> str:
     if not char_id:
         return "—"
     return _titleize(_strip_prefix(char_id)) or char_id
+
+
+def pretty_relic_name(relic_id: str | None) -> str:
+    if not relic_id:
+        return "—"
+    overrides = _overrides()
+    if relic_id in overrides:
+        return overrides[relic_id]
+    return _titleize(_strip_prefix(relic_id)) or relic_id

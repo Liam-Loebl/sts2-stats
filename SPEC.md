@@ -387,7 +387,7 @@ has the full history locally.
 3. **Card rankings board** (done): pick%, win%, WAR, Elo (sortable; N shown; shrinkage; coloring).
 4. **Per-card / per-character detail pages** (done): `views/card_detail.py` + `views/character_detail.py`, reachable from the nav and from "Detail →" buttons on the board / Overview.
 5. **Auto-update watcher** (done): a sidebar Auto-refresh toggle polls the history folder on an interval (`st.fragment(run_every=...)`, no background threads) and re-imports + reruns when a run finishes.
-6. **Relics / potions + polish + stretch features.**
+6. **Relics / potions + polish + stretch.** Relics page done (`views/relics.py` + `sts2_stats/relics.py`: per-relic WAR over a new `relic_events` table; no Elo/pick% since relics are auto-taken). Potions + polish/stretch remain.
 
 ---
 

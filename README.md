@@ -2,7 +2,7 @@
 
 > A local-first stats tool for my Slay the Spire 2 runs, built to find which cards I overrate and which I should be picking more.
 
-Status: Phases 1–4 complete — data ingest, Overview dashboard, the Card Rankings board (WAR + Elo), and per-card / per-character detail pages. Phase 5's live auto-refresh watcher is done; relic/potion analytics is next.
+Status: Phases 1–4 complete — data ingest, Overview dashboard, the Card Rankings board (WAR + Elo), and per-card / per-character detail pages. Plus a live auto-refresh watcher and a Relics page (per-relic WAR); potion analytics and polish are what's left.
 
 ## The story
 
@@ -42,6 +42,8 @@ I'm building it because I want to use it to get better at the game, and because 
 - The app is now multipage (Overview + Card Rankings) via Streamlit navigation, with the theme and filters shared across both pages.
 
 **Detail pages (Phase 4):** open any card or character for a focused view — via the nav tabs, or on the Card Rankings board by searching a card and clicking Open detail. Per-card: act splits, Elo over time, and an Elo-vs-WAR map. Per-character: win-rate trend, damage curve, and that character's best and worst cards by WAR.
+
+**Relics (Phase 6):** a separate Relics page ranking every relic I've obtained by WAR. Relics are auto-taken, so there's no Elo or pick rate, just outcome: when I get a relic (at the floor it drops), do I win above my baseline for runs that reached that floor? The same survivorship-corrected, shrunk WAR as cards, colored green to red, with a sample floor. Starting relics sit near zero by design.
 
 ## The interesting parts
 
@@ -104,7 +106,7 @@ A few design choices worth flagging:
 - [x] **Phase 2 — Overview dashboard.** Streamlit app with the topline numbers, five character tiles, rolling win-rate trend, damage-per-act chart, and a filter sidebar.
 - [x] **Phase 3 — Card rankings board.** Pick%, win%, WAR, Elo, all sortable, sample size shown, shrinkage applied to low-N cards.
 - [x] **Phase 4 — Per-card and per-character detail pages.** WAR by act, Elo over time, Elo-vs-WAR scatter; per-character win-rate trend, damage curve, and best/worst cards.
-- [ ] **Phase 5 — Live refresh + the rest of the game.** Live auto-refresh watcher **done** (sidebar toggle; polls the history folder and re-imports + refreshes when a run finishes); relic and potion analytics on the same metric framework still to come.
+- [ ] **Phase 5 — Live refresh + the rest of the game.** Live auto-refresh watcher **done** (sidebar toggle; re-imports + refreshes when a run finishes); Relics page **done** (per-relic WAR, no Elo since relics are auto-taken); potion analytics on the same metric framework still to come.
 
 ## Setup
 
@@ -143,8 +145,11 @@ sts2-stats/
 ├── app.py               Streamlit entry: router + shared chrome (multipage)
 ├── dashboard_common.py  shared theme, sidebar filters, render helpers
 ├── views/
-│   ├── overview.py      Overview page (topline, character tiles, charts)
-│   └── card_rankings.py Card Rankings board (WAR, Elo, pick%, win%)
+│   ├── overview.py         Overview page (topline, character tiles, charts)
+│   ├── card_rankings.py    Card Rankings board (WAR, Elo, pick%, win%)
+│   ├── card_detail.py      per-card detail (art, by-act, Elo-over-time, scatter)
+│   ├── character_detail.py per-character detail (win rate, damage, best/worst)
+│   └── relics.py           Relics page (per-relic WAR)
 ├── theme.py             palettes (dark + light) + Altair theme + custom CSS
 ├── import_all.py        one-command CLI import + sanity report
 ├── verify.py            invariant + cross-source checks + tone scan
@@ -158,11 +163,12 @@ sts2-stats/
 │   └── config.toml      Streamlit theme defaults (palette mirrors theme.py)
 ├── sts2_stats/          the data-layer + stats package
 │   ├── paths.py         save-folder auto-detection
-│   ├── parser.py        .run JSON -> normalized records (runs + card + room events)
+│   ├── parser.py        .run JSON -> normalized records (runs + card / room / relic events)
 │   ├── db.py            SQLite schema + sanity report
 │   ├── importer.py      idempotent upsert
 │   ├── queries.py       SQL backend for the Overview dashboard
 │   ├── rankings.py      Phase 3 stats engine (WAR + Elo + pick%/win%)
+│   ├── relics.py        Phase 6 relic WAR engine
 │   ├── reworks.py       card-rework valid-from filter + version_key helper
 │   └── names.py         card / character display-name prettifier
 └── sts2_stats.sqlite    generated locally; not checked in
