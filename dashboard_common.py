@@ -27,6 +27,7 @@ import streamlit as st
 from sts2_stats import reworks
 from sts2_stats.db import connect
 from sts2_stats.importer import import_all
+from sts2_stats.paths import find_history_dirs, iter_run_files
 from theme import PALETTES, get_css, register_altair_theme
 
 
@@ -104,6 +105,57 @@ def connect_db():
 def _last_import_str() -> str:
     last = st.session_state.get("last_import_at")
     return last.strftime("%Y-%m-%d %H:%M") if last else "unknown"
+
+
+# ---------------------------------------------------------------------------
+# Auto-update watcher (Phase 5) — Streamlit-native, no background threads
+# ---------------------------------------------------------------------------
+
+WATCH_INTERVAL = "10s"  # how often to poll the history folder for new runs
+
+
+def _history_signature() -> tuple[int, int]:
+    """Cheap fingerprint of the run-history folder(s): (#run files, newest mtime).
+
+    Changes exactly when a run is written (a finished run drops a new
+    <start_time>.run) or Steam Cloud syncs one down — and never opens a file."""
+    count, newest = 0, 0
+    for d in find_history_dirs():
+        for p in iter_run_files(d):
+            count += 1
+            try:
+                newest = max(newest, int(p.stat().st_mtime))
+            except OSError:
+                pass
+    return (count, newest)
+
+
+@st.fragment(run_every=WATCH_INTERVAL)
+def _watch_tick() -> None:
+    """Poll the folder on an interval; on a new run, re-import and rerun the whole
+    app so every view refreshes. Only this fragment re-runs on the interval, so the
+    poll is cheap — a real change is what triggers the import + full app rerun."""
+    sig = _history_signature()
+    if sig != st.session_state.get("_history_sig"):
+        st.session_state["_history_sig"] = sig
+        do_import()
+        st.rerun()  # scope="app": refresh topline, charts, board — everything
+    st.caption(f"Auto-refresh on · checking every {WATCH_INTERVAL}")
+
+
+def _render_watcher() -> None:
+    """Sidebar control + loop for the auto-update watcher."""
+    enabled = st.sidebar.toggle(
+        "Auto-refresh", value=True, key="_watch_enabled",
+        help=f"Check for new runs every {WATCH_INTERVAL} and refresh automatically "
+             "when one finishes.",
+    )
+    # Seed the baseline so the first tick doesn't reimport on a non-change.
+    if "_history_sig" not in st.session_state:
+        st.session_state["_history_sig"] = _history_signature()
+    if enabled:
+        with st.sidebar:
+            _watch_tick()
 
 
 # ---------------------------------------------------------------------------
@@ -192,6 +244,8 @@ def render_sidebar(mode: str, palette: dict) -> dict:
         with st.spinner("Re-importing..."):
             do_import()
         st.rerun()
+
+    _render_watcher()
 
     # Last-import info
     info_conn = connect_db()

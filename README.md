@@ -2,7 +2,7 @@
 
 > A local-first stats tool for my Slay the Spire 2 runs, built to find which cards I overrate and which I should be picking more.
 
-Status: Phases 1–4 complete — data ingest, Overview dashboard, the Card Rankings board (WAR + Elo), and per-card / per-character detail pages. Phase 5 (live refresh + relics/potions) is next.
+Status: Phases 1–4 complete — data ingest, Overview dashboard, the Card Rankings board (WAR + Elo), and per-card / per-character detail pages. Phase 5's live auto-refresh watcher is done; relic/potion analytics is next.
 
 ## The story
 
@@ -25,7 +25,7 @@ I'm building it because I want to use it to get better at the game, and because 
 
 **Overview dashboard (Phase 2):**
 
-- Streamlit app (`app.py`) that opens in a browser and re-imports new runs automatically on startup.
+- Streamlit app (`app.py`) that opens in a browser, re-imports new runs automatically on startup, and live-refreshes while open: a sidebar Auto-refresh watcher polls the save folder and updates every view when a run finishes.
 - Sidebar filters: solo / co-op / both, standard / all game modes, include or exclude abandoned, minimum ascension, and a minimum game-version (patch) window. (Character is a per-page control on the Card Rankings board, not a global sidebar filter.)
 - Topline row: win rate (hero stat), total runs, and best consecutive-win streak.
 - Five character tiles with per-character win rate and run count, in the game's own character colors.
@@ -104,7 +104,7 @@ A few design choices worth flagging:
 - [x] **Phase 2 — Overview dashboard.** Streamlit app with the topline numbers, five character tiles, rolling win-rate trend, damage-per-act chart, and a filter sidebar.
 - [x] **Phase 3 — Card rankings board.** Pick%, win%, WAR, Elo, all sortable, sample size shown, shrinkage applied to low-N cards.
 - [x] **Phase 4 — Per-card and per-character detail pages.** WAR by act, Elo over time, Elo-vs-WAR scatter; per-character win-rate trend, damage curve, and best/worst cards.
-- [ ] **Phase 5 — Live refresh + the rest of the game.** Folder watcher so the dashboard updates as runs finish; relic and potion analytics on the same metric framework.
+- [ ] **Phase 5 — Live refresh + the rest of the game.** Live auto-refresh watcher **done** (sidebar toggle; polls the history folder and re-imports + refreshes when a run finishes); relic and potion analytics on the same metric framework still to come.
 
 ## Setup
 
@@ -118,7 +118,7 @@ python import_all.py        # one-time CLI import + sanity report
 streamlit run app.py        # opens the dashboard at localhost:8501
 ```
 
-`import_all.py` auto-discovers your StS2 history folder, builds `sts2_stats.sqlite` next to the script, and ends with a sanity report. `streamlit run app.py` opens the Overview dashboard in your browser; the app also re-imports automatically on launch and exposes a "Refresh data" button in the sidebar for mid-session updates.
+`import_all.py` auto-discovers your StS2 history folder, builds `sts2_stats.sqlite` next to the script, and ends with a sanity report. `streamlit run app.py` opens the Overview dashboard in your browser; the app also re-imports automatically on launch, live-refreshes via the sidebar Auto-refresh toggle when a run finishes, and exposes a "Refresh data" button for manual mid-session updates.
 
 Prefer [uv](https://docs.astral.sh/uv/)? `uv run streamlit run app.py` works too — a `pyproject.toml` and `uv.lock` are included for a reproducible environment.
 
