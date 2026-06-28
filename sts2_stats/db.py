@@ -13,7 +13,6 @@ import_all.py. Idempotent upsert is keyed on the run_id (= run's start_time).
 from __future__ import annotations
 
 import sqlite3
-from contextlib import contextmanager
 from pathlib import Path
 
 
@@ -253,10 +252,10 @@ def print_sanity_report(report: dict) -> None:
     print(f"Import errors logged:      {report['import_errors']}")
     print()
     if report["solo_std_winrate"] is not None:
-        print(f"Solo / standard / non-abandoned:")
+        print("Solo / standard / non-abandoned:")
         print(f"  {report['solo_std_wins']}W / {report['solo_std_losses']}L  "
               f"(n={report['solo_std_total']}, win rate = {report['solo_std_winrate']:.1%})")
-        print(f"  RECON BASELINE expected:  49W / 42L (n=91, 53.8%)")
+        print("  RECON BASELINE expected:  49W / 42L (n=91, 53.8%)")
     print()
     print("By character:")
     for char, n in report["by_character"]:

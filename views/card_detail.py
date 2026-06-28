@@ -4,8 +4,8 @@ Elo over time, and where it sits on the Elo-vs-WAR map.
 Reads the active sidebar filters (mode / game_mode / ascension / patch) from
 session_state, computes the full board once, and drills into a single
 (card, character). The card is chosen with the selectbox here, or arrives
-pre-selected from the Card Rankings board's "Detail →" button (a one-shot
-hand-off via st.session_state["detail_card"]).
+pre-selected from the Card Rankings board's "Open detail" search shortcut (a
+one-shot hand-off via st.session_state["detail_card"]).
 """
 from __future__ import annotations
 
@@ -76,7 +76,7 @@ options = sorted(rows, key=lambda r: (r["card"], r["character_name"]))
 keys = [(r["card_id"], r["character"]) for r in options]
 labels = {(r["card_id"], r["character"]): f"{r['card']} · {r['character_name']}" for r in options}
 
-# One-shot hand-off from the board's "Detail →" button.
+# One-shot hand-off from the board's "Open detail" search shortcut.
 pre = st.session_state.pop("detail_card", None)
 if pre in keys:
     st.session_state["_detail_card_select"] = pre

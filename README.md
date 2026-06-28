@@ -41,7 +41,7 @@ I'm building it because I want to use it to get better at the game, and because 
 - Filterable by character and act, with the full methodology written out in plain language on the page.
 - The app is now multipage (Overview + Card Rankings) via Streamlit navigation, with the theme and filters shared across both pages.
 
-**Detail pages (Phase 4):** open any card or character (the nav tabs, or the "Detail →" buttons on the board and Overview) for a focused view. Per-card: act splits, Elo over time, and an Elo-vs-WAR map. Per-character: win-rate trend, damage curve, and that character's best and worst cards by WAR.
+**Detail pages (Phase 4):** open any card or character for a focused view — via the nav tabs, or on the Card Rankings board by searching a card and clicking Open detail. Per-card: act splits, Elo over time, and an Elo-vs-WAR map. Per-character: win-rate trend, damage curve, and that character's best and worst cards by WAR.
 
 ## The interesting parts
 

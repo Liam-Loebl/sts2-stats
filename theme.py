@@ -325,16 +325,6 @@ h3, .stMarkdown h3 {{
     height: 100%;
     box-shadow: {palette['shadow']};
 }}
-.metric-card.is-hero {{
-    padding: 28px;
-    /* Match height of the right-column 2-stack (two cards + 0.5rem gap).
-       Without this Streamlit's columns top-align and the hero column
-       hangs shorter than its neighbor. */
-    min-height: calc(2 * 116px + 0.5rem);
-    display: flex;
-    flex-direction: column;
-    justify-content: center;
-}}
 .metric-card.is-selected {{
     border-color: {palette['accent']};
 }}
@@ -371,10 +361,6 @@ h3, .stMarkdown h3 {{
     color: {palette['text_primary']};
     font-variant-numeric: tabular-nums;
     margin: 0;
-}}
-.metric-value.is-hero {{
-    font-size: 48px;
-    letter-spacing: -0.02em;
 }}
 .metric-value.is-secondary {{
     font-size: 26px;

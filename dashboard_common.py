@@ -258,21 +258,16 @@ def metric_card(
     value: str,
     delta: str | None = None,
     *,
-    hero: bool = False,
     accent: bool = False,
     selected: bool = False,
     secondary: bool = False,
 ) -> None:
     """Hand-rolled metric tile. Replaces st.metric."""
     classes = ["metric-card"]
-    if hero:
-        classes.append("is-hero")
     if selected:
         classes.append("is-selected")
 
     value_classes = ["metric-value"]
-    if hero:
-        value_classes.append("is-hero")
     if secondary:
         value_classes.append("is-secondary")
     if accent:

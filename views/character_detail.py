@@ -2,10 +2,10 @@
 and best/worst cards.
 
 Reads the active sidebar filters from session_state. The character is chosen with
-the selectbox here, or arrives from the Overview's "Detail →" button via a
-one-shot st.session_state["detail_character"]. Pure presentation over existing
-queries (topline_stats / per_character_stats / win_rate_over_time / damage_per_act)
-and the rankings engine — no new engine work.
+the five character buttons at the top of the page (an optional one-shot
+st.session_state["detail_character"] hand-off is also honored). Pure presentation
+over existing queries (topline_stats / per_character_stats / win_rate_over_time /
+damage_per_act) and the rankings engine — no new engine work.
 """
 from __future__ import annotations
 
@@ -34,7 +34,7 @@ dc.page_header("Character Detail")
 
 keys = list(dc.CHARACTERS)
 
-# One-shot hand-off from the Overview "Detail →" button.
+# Optional one-shot hand-off (if some entry point sets detail_character).
 pre = st.session_state.pop("detail_character", None)
 if pre in keys:
     st.session_state["_detail_char"] = pre
