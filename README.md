@@ -43,7 +43,7 @@ I'm building it because I want to use it to get better at the game, and because 
 
 **Detail pages (Phase 4):** open any card or character for a focused view — via the nav tabs, or on the Card Rankings board by searching a card and clicking Open detail. Per-card: act splits, Elo over time, and an Elo-vs-WAR map. Per-character: win-rate trend, damage curve, and that character's best and worst cards by WAR.
 
-**Relics (Phase 6):** a separate Relics page ranking every relic I've obtained by WAR. Relics are auto-taken, so there's no Elo or pick rate, just outcome: when I get a relic (at the floor it drops), do I win above my baseline for runs that reached that floor? The same survivorship-corrected, shrunk WAR as cards, colored green to red, with a sample floor. Starting relics sit near zero by design.
+**Relics (Phase 6):** a Relics page in a per-relic detail format — pick a relic to see its art, how often I obtained it, my win rate when I did, its WAR, and where it ranks among every relic I've gotten. Relics are auto-taken, so there's no Elo, pick rate, or Skip — just outcome: when I get a relic (at the floor it drops), do I win above my baseline for runs that reached that floor? The same survivorship-corrected, shrunk WAR as cards. Starting relics sit near zero by design.
 
 ## The interesting parts
 

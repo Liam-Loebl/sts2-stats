@@ -1,20 +1,38 @@
-"""Relics page — every relic I've obtained, ranked by WAR.
+"""Relics page — a per-relic detail view (not a table).
 
-Relics are auto-taken, so (unlike the card board) there's no Elo or pick rate —
-just outcome: WAR (win-rate points above my floor-conditional baseline) plus how
-often I obtained it and my win rate when I did. Themed HTML table (Styler) so it
-follows the light/dark toggle, with green->red WAR coloring and a sample floor.
-Engine: sts2_stats/relics.py.
+Relics are auto-taken, so there's no Skip, Elo, or pick rate — just outcome.
+Pick a relic and see its art, the headline numbers (Obtained, Win % when
+obtained, WAR, and its rank), and where it sits in the WAR ranking of every
+relic you've gotten. WAR reuses the card engine's floor-conditional,
+survivorship-corrected baseline (sts2_stats/relics.py).
 """
 from __future__ import annotations
 
+import html
 import math
 
+import altair as alt
 import pandas as pd
+import requests
 import streamlit as st
 
 import dashboard_common as dc
 from sts2_stats import relics
+
+
+@st.cache_data(show_spinner=False, ttl=3600)
+def _relic_image_url(relic_id: str) -> str | None:
+    """untapped.gg relic-art URL, or None if it doesn't resolve. Slug = relic_id
+    minus the RELIC. prefix, lowercased, underscores kept (RELIC.WAR_PAINT ->
+    war_paint). Cached HEAD check so a missing one never shows a broken icon."""
+    slug = (relic_id[6:] if relic_id.startswith("RELIC.") else relic_id).lower()
+    url = f"https://sts2json.untapped.gg/art/relics/{slug}.png"
+    try:
+        r = requests.head(url, timeout=4, allow_redirects=True)
+        return url if r.status_code == 200 else None
+    except requests.RequestException:
+        return None
+
 
 palette = st.session_state["palette"]
 filters = st.session_state["filters"]
@@ -24,26 +42,18 @@ dc.page_header("Relics")
 
 
 # ---------------------------------------------------------------------------
-# Controls
+# Controls + data
 # ---------------------------------------------------------------------------
 
 char_labels = ["Overall"] + [c.replace("CHARACTER.", "") for c in dc.CHARACTERS]
-char_choice = st.radio(
-    "Character", char_labels, index=0, horizontal=True, key="_relic_char"
-)
+char_choice = st.radio("Character", char_labels, index=0, horizontal=True, key="_relic_char")
 relic_character = None if char_choice == "Overall" else f"CHARACTER.{char_choice}"
 relic_filters = {**filters, "character": relic_character}
 
-c1, c2 = st.columns([2, 3], gap="medium")
-with c1:
-    sort_choice = st.selectbox(
-        "Sort by", ["WAR", "Obtained", "Win %"], index=0, key="_relic_sort"
-    )
-with c2:
-    min_obt = st.slider(
-        "Minimum times obtained", 1, 30, 5, key="_relic_minobt",
-        help="Hide relics with too little data to read. N is shown on every row.",
-    )
+min_obt = st.slider(
+    "Minimum times obtained", 1, 30, 5, key="_relic_minobt",
+    help="Only rank relics with at least this many obtains (small samples are noise).",
+)
 
 conn = dc.connect_db()
 try:
@@ -54,115 +64,125 @@ finally:
 rows = res["rows"]
 meta = res["meta"]
 
-if meta["n_runs"] == 0 or not rows:
-    st.markdown(
-        '<div class="empty-state" style="margin-top:1rem;">'
-        "No relic data for these filters yet.</div>",
-        unsafe_allow_html=True,
-    )
-    st.stop()
-
-
-# ---------------------------------------------------------------------------
-# Table styling (themed; follows light/dark like the card board)
-# ---------------------------------------------------------------------------
-
-st.markdown(
-    """
-<style>
-.cr-caption { font-size: 12px; color: var(--c-text2); margin: -0.45rem 0 0.7rem 0;
-  font-variant-numeric: tabular-nums; }
-.relic-table { max-height: 600px; overflow: auto; border: 1px solid var(--c-border);
-  border-radius: 12px; box-shadow: var(--c-shadow); margin-top: 2px; }
-.relic-table table { width: 100%; border-collapse: collapse;
-  font-variant-numeric: tabular-nums; }
-.relic-table thead th { position: sticky; top: 0; background: var(--c-surface);
-  color: var(--c-text2); text-align: right; font-weight: 600; font-size: 12px;
-  padding: 10px 14px; border-bottom: 1px solid var(--c-border); box-shadow: 0 1px 0 var(--c-border); }
-.relic-table thead th:first-child { text-align: left; }
-.relic-table tbody td { padding: 9px 14px; text-align: right; color: var(--c-text);
-  border-bottom: 1px solid var(--c-border); font-size: 13px; }
-.relic-table tbody td:first-child { text-align: left; font-weight: 500; }
-.relic-table tbody tr:hover td { background-color: var(--c-hover); }
-.relic-table::-webkit-scrollbar { width: 10px; height: 10px; }
-.relic-table::-webkit-scrollbar-thumb { background: var(--c-border); border-radius: 6px; }
-</style>
-""".replace("var(--c-border)", palette["border"])
-   .replace("var(--c-text2)", palette["text_secondary"])
-   .replace("var(--c-text)", palette["text_primary"])
-   .replace("var(--c-surface)", palette["surface"])
-   .replace("var(--c-hover)", palette["accent_muted"])
-   .replace("var(--c-shadow)", palette["shadow"]),
-    unsafe_allow_html=True,
-)
-
-
-# ---------------------------------------------------------------------------
-# Filter / search / sort -> table
-# ---------------------------------------------------------------------------
-
-shown = [r for r in rows if r["obtained"] >= min_obt]
-search = st.text_input(
-    "Search relics", "", placeholder="Search relics by name…",
-    key="_relic_search", label_visibility="collapsed",
-).strip().lower()
-display = [r for r in shown if not search or search in r["relic"].lower()]
-
-_sort_key = {"WAR": "war", "Obtained": "obtained", "Win %": "winrate_shrunk"}[sort_choice]
-display = sorted(
-    display, key=lambda r: (r[_sort_key] if r[_sort_key] is not None else -math.inf),
+qualifying = sorted(
+    [r for r in rows if r["obtained"] >= min_obt],
+    key=lambda r: (r["war"] if r["war"] is not None else -math.inf),
     reverse=True,
 )
 
-dc.eyebrow("All relics")
-_caption = f"{len(display)} shown · obtained {min_obt}+ times · WAR in win-rate points"
-if search:
-    _caption += f" · matching “{search}”"
-st.markdown(f'<div class="cr-caption">{_caption}</div>', unsafe_allow_html=True)
-
-if not display:
+if meta["n_runs"] == 0 or not qualifying:
     st.markdown(
-        '<div class="empty-state">No relics clear the current filters.</div>',
+        '<div class="empty-state" style="margin-top:1rem;">'
+        "No relics clear the current filters yet (try lowering the minimum).</div>",
         unsafe_allow_html=True,
     )
     st.stop()
 
 
-def _hex_to_rgb(h: str) -> tuple[int, int, int]:
-    h = h.lstrip("#")
-    return tuple(int(h[i:i + 2], 16) for i in (0, 2, 4))  # type: ignore[return-value]
+# ---------------------------------------------------------------------------
+# Relic picker
+# ---------------------------------------------------------------------------
 
+keys = [r["relic_id"] for r in qualifying]
+by_id = {r["relic_id"]: r for r in qualifying}
+rank_of = {r["relic_id"]: i + 1 for i, r in enumerate(qualifying)}
 
-_POS = _hex_to_rgb(palette["positive"])
-_NEG = _hex_to_rgb(palette["negative"])
-
-
-def _war_bg(pct) -> str:
-    """Green->red wash by WAR magnitude (pct is WAR in win-rate points)."""
-    if pct is None or (isinstance(pct, float) and math.isnan(pct)):
-        return ""
-    frac = max(-1.0, min(1.0, pct / 8.0))
-    r, g, b = _POS if frac >= 0 else _NEG
-    return f"background-color: rgba({r},{g},{b},{min(0.45, abs(frac) * 0.45):.3f});"
-
-
-df = pd.DataFrame([
-    {
-        "Relic": r["relic"],
-        "Obtained": r["obtained"],
-        "Win %": r["winrate_shrunk"] * 100 if r["winrate_shrunk"] is not None else float("nan"),
-        "WAR": r["war"] * 100 if r["war"] is not None else float("nan"),
-    }
-    for r in display
-])
-
-styler = (
-    df.style
-    .hide(axis="index")
-    .format({"Obtained": "{:.0f}", "Win %": "{:.1f}%", "WAR": "{:+.1f}"}, na_rep="—")
-    .map(_war_bg, subset=["WAR"])
+if st.session_state.get("_relic_pick") not in keys:
+    st.session_state["_relic_pick"] = keys[0]
+chosen = st.selectbox(
+    "Relic", keys, format_func=lambda k: by_id[k]["relic"], key="_relic_pick",
 )
-st.markdown(f'<div class="relic-table">{styler.to_html()}</div>', unsafe_allow_html=True)
+row = by_id[chosen]
+rank = rank_of[chosen]
+
+
+# ---------------------------------------------------------------------------
+# Hero: art + headline tiles
+# ---------------------------------------------------------------------------
+
+def _pct(v) -> str:
+    return f"{v * 100:.1f}%" if v is not None else "—"
+
+
+def _war(v) -> str:
+    return f"{v * 100:+.1f}" if v is not None else "—"  # win-rate points
+
+
+_art_col, _info_col = st.columns([1, 3], gap="large")
+with _art_col:
+    _img = _relic_image_url(row["relic_id"])
+    if _img:
+        st.image(_img, width=200)
+    else:
+        st.markdown(
+            f'<div style="border:2px dashed {palette["border"]};border-radius:14px;'
+            f"min-height:200px;display:flex;align-items:center;justify-content:center;"
+            f'color:{palette["text_secondary"]};font-size:13px;">no relic art</div>',
+            unsafe_allow_html=True,
+        )
+with _info_col:
+    st.markdown(
+        f'<div class="chart-title" style="font-size:28px;border-left:5px solid {palette["accent"]};'
+        f'padding-left:0.7rem;margin-bottom:0.15rem;">{html.escape(row["relic"])}</div>'
+        f'<div class="chart-sub" style="margin-bottom:0.8rem;">obtained {row["obtained"]}× · '
+        f'won {row["wins"]} of those runs</div>',
+        unsafe_allow_html=True,
+    )
+    dc.sample_warning(row["obtained"], floor=10, noun="obtains", palette=palette)
+    m = st.columns(4, gap="small")
+    with m[0]:
+        dc.metric_card("Obtained", str(row["obtained"]), secondary=True)
+    with m[1]:
+        dc.metric_card("Win % when obtained", _pct(row["winrate_shrunk"]), secondary=True)
+    with m[2]:
+        dc.metric_card("WAR", _war(row["war"]), secondary=True, accent=True)
+    with m[3]:
+        dc.metric_card("Rank", f"#{rank} of {len(qualifying)}", secondary=True)
+
+
+# ---------------------------------------------------------------------------
+# Where it ranks — WAR across every qualifying relic
+# ---------------------------------------------------------------------------
+
+dc.eyebrow("WAR ranking — where this relic sits")
+
+sdf = pd.DataFrame([
+    {
+        "relic": r["relic"],
+        "WAR": r["war"] * 100,
+        "rank": i + 1,
+        "is_this": r["relic_id"] == chosen,
+    }
+    for i, r in enumerate(qualifying)
+])
+zero = alt.Chart(pd.DataFrame({"x": [0]})).mark_rule(
+    color=palette["text_secondary"], opacity=0.35).encode(x="x:Q")
+others = (
+    alt.Chart(sdf[~sdf["is_this"]])
+    .mark_circle(size=55, opacity=0.4, color=palette["text_secondary"])
+    .encode(
+        x=alt.X("WAR:Q", axis=alt.Axis(title="WAR (win-rate points)")),
+        y=alt.Y("rank:Q", axis=alt.Axis(title="Rank (1 = best)"),
+                scale=alt.Scale(reverse=True)),
+        tooltip=["relic", alt.Tooltip("WAR:Q", format="+.1f"), alt.Tooltip("rank:Q")],
+    )
+)
+this = (
+    alt.Chart(sdf[sdf["is_this"]])
+    .mark_point(size=240, filled=True, color=palette["accent"],
+                stroke=palette["text_primary"], strokeWidth=1.5)
+    .encode(
+        x="WAR:Q", y="rank:Q",
+        tooltip=["relic", alt.Tooltip("WAR:Q", format="+.1f"), alt.Tooltip("rank:Q")],
+    )
+)
+st.altair_chart((zero + others + this).properties(height=340), width="stretch", theme=None)
+st.markdown(
+    f'<div class="chart-sub">Each dot is a relic ({len(qualifying)} obtained '
+    f'{min_obt}+ times); this one is highlighted. Further right = it wins more '
+    "above my floor baseline when I get it.</div>",
+    unsafe_allow_html=True,
+)
 
 
 # ---------------------------------------------------------------------------
@@ -172,23 +192,22 @@ st.markdown(f'<div class="relic-table">{styler.to_html()}</div>', unsafe_allow_h
 with st.expander("How these numbers are computed"):
     st.markdown(
         f"""
-**Relics are outcome-only.** Unlike cards, relics are auto-acquired — there's no
-pick-vs-skip choice — so there's no Elo or pick rate, just *did getting it help*.
+**Relics are outcome-only.** They're auto-acquired — no pick-vs-skip choice — so
+there's no Elo, no pick rate, and no Skip line. Just *did getting it help*.
 
-**WAR — Wins Above Replacement.** For each run that obtained a relic (at the floor
-it dropped), I compare the run's result to my own win rate among runs of that
+**WAR — Wins Above Replacement.** For each run that obtained the relic (at the
+floor it dropped), I compare the run's result to my win rate among runs of that
 character that *reached that same floor*. Pinning the baseline to the floor strips
-out survivorship (a late-dropping relic shouldn't get credit for the run already
-surviving). Shown in win-rate points, shrunk toward 0 by
+out survivorship. Shown in win-rate points, shrunk toward 0 by
 {meta['war_shrinkage_k']:.0f} phantom obtains so tiny samples don't show fake
-extremes. **+2.0** means +2 percentage points of win rate when I get it.
+extremes. **+2.0** = +2 percentage points of win rate when I get it.
 
 **Win %** is my win rate in runs that obtained the relic (shrunk toward the
-average). **Obtained** is how many runs got it (its N).
+average). **Obtained** is how many runs got it (its N). **Rank** is its place in
+the WAR order of every relic obtained {min_obt}+ times.
 
 Starting relics sit near **0** by design — every run of a character has them, so
-there's nothing to compare against. Sample sizes are small ({meta['n_runs']} runs),
-so N is shown and relics below the *Minimum times obtained* bar are hidden.
+there's nothing to compare against.
 """)
 
 st.markdown(
