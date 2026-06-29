@@ -33,7 +33,7 @@ def import_all(db_path: Path, history_dirs: Iterable[Path] | None = None) -> dic
             steamid = steam_id_from_path(hist)
             for path in iter_run_files(hist):
                 try:
-                    run_row, card_events, room_events, relic_events = parse_file(
+                    run_row, card_events, room_events, relic_events, potion_events = parse_file(
                         path,
                         local_steam_id=steamid,
                         imported_at=now_iso,
@@ -46,7 +46,7 @@ def import_all(db_path: Path, history_dirs: Iterable[Path] | None = None) -> dic
                     log_import_error(conn, str(path), f"{type(e).__name__}: {e}", now_iso)
                     errors += 1
                     continue
-                upsert_run(conn, run_row, card_events, room_events, relic_events)
+                upsert_run(conn, run_row, card_events, room_events, relic_events, potion_events)
                 imported += 1
         conn.commit()
     finally:

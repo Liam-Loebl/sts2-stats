@@ -239,6 +239,37 @@ def check_db_invariants(conn: sqlite3.Connection, r: Reporter) -> None:
         else:
             r.ok("relic_events floor within [1, floors_reached] on every row")
 
+    # Phase 6 potion_events invariants
+    ptotal = conn.execute("SELECT COUNT(*) FROM potion_events").fetchone()[0]
+    if ptotal == 0:
+        r.note("potion_events table is empty (Potions page will have no data)")
+    else:
+        r.ok(f"potion_events populated ({ptotal} rows)")
+        orph = conn.execute(
+            "SELECT COUNT(*) FROM potion_events pe LEFT JOIN runs r ON pe.run_id = r.run_id "
+            "WHERE r.run_id IS NULL"
+        ).fetchone()[0]
+        if orph:
+            r.fail(f"{orph} potion_events row(s) reference a missing run_id")
+        else:
+            r.ok("every potion_events row references a real run_id")
+        badf = conn.execute(
+            "SELECT COUNT(*) FROM potion_events pe JOIN runs r ON pe.run_id = r.run_id "
+            "WHERE pe.floor < 1 OR pe.floor > r.floors_reached"
+        ).fetchone()[0]
+        if badf:
+            r.fail(f"{badf} potion_events row(s) have floor out of [1, floors_reached]")
+        else:
+            r.ok("potion_events floor within [1, floors_reached] on every row")
+        badt = conn.execute(
+            "SELECT COUNT(*) FROM potion_events "
+            "WHERE event_type NOT IN ('offered','used','bought','discarded')"
+        ).fetchone()[0]
+        if badt:
+            r.fail(f"{badt} potion_events row(s) have an unknown event_type")
+        else:
+            r.ok("potion_events event_type is one of offered/used/bought/discarded")
+
 
 def check_coop_identification(conn: sqlite3.Connection, r: Reporter) -> None:
     r.header("Co-op local-user identification (all co-op runs)")
@@ -579,6 +610,45 @@ def check_relic_engine(conn: sqlite3.Connection, r: Reporter) -> None:
         r.fail(f"{len(problems)} relic(s) with non-finite WAR: {problems[:3]}")
     else:
         r.ok("all present relic WAR values finite")
+
+
+def check_potion_engine(conn: sqlite3.Connection, r: Reporter) -> None:
+    r.header("Phase 6 potion rankings engine")
+    import math as _m
+
+    from sts2_stats import potions
+
+    filters = {
+        "mode": "solo", "game_mode": "standard", "include_abandoned": False,
+        "ascension_min": 0, "character": None,
+    }
+    try:
+        res = potions.compute_potion_rankings(conn, filters)
+    except Exception as e:  # noqa: BLE001 — surface any engine crash as a FAIL
+        r.fail(f"compute_potion_rankings raised: {e!r}")
+        return
+    rows = res["rows"]
+    if not rows:
+        r.note("no in-scope potions — skipping potion engine checks")
+        return
+    r.ok(f"engine ran ({res['meta']['n_potions']} potions over {res['meta']['n_events']} events)")
+    # WAR only counts picks (with a baseline), so its N can never exceed picks.
+    bad = [x for x in rows if x["war_n"] > x["picked"]]
+    if bad:
+        r.fail(f"{len(bad)} potion(s) have war_n > picked")
+    else:
+        r.ok("WAR sample never exceeds picks (war_n <= picked)")
+    problems: list[str] = []
+    for x in rows:
+        pr = x["pickup_rate"]
+        if pr is not None and not (0.0 <= pr <= 1.0):
+            problems.append(f"{x['potion']} pickup={pr}")
+        if x["war"] is not None and not _m.isfinite(x["war"]):
+            problems.append(f"{x['potion']} non-finite WAR")
+    if problems:
+        r.fail(f"{len(problems)} value problem(s): {problems[:3]}")
+    else:
+        r.ok("pickup% in [0,1] and all present WAR finite")
 
 
 def check_version_key_ordering(r: Reporter) -> None:
@@ -1088,6 +1158,7 @@ def main() -> int:
         check_rankings_respects_reworks(conn, r)
         check_build_ids_monotonic(conn, r)
         check_relic_engine(conn, r)
+        check_potion_engine(conn, r)
     finally:
         conn.close()
     check_version_key_ordering(r)

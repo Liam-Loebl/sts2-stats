@@ -2,7 +2,7 @@
 
 > A local-first stats tool for my Slay the Spire 2 runs, built to find which cards I overrate and which I should be picking more.
 
-Status: Phases 1–4 complete — data ingest, Overview dashboard, the Card Rankings board (WAR + Elo), and per-card / per-character detail pages. Plus a live auto-refresh watcher and a Relics page (per-relic WAR); potion analytics and polish are what's left.
+Status: Phases 1–4 complete — data ingest, Overview dashboard, the Card Rankings board (WAR + Elo), and per-card / per-character detail pages. Plus a live auto-refresh watcher, a Relics page, and a Potions page. Only polish / stretch features remain.
 
 ## The story
 
@@ -44,6 +44,8 @@ I'm building it because I want to use it to get better at the game, and because 
 **Detail pages (Phase 4):** open any card or character for a focused view — via the nav tabs, or on the Card Rankings board by searching a card and clicking Open detail. Per-card: act splits, Elo over time, and an Elo-vs-WAR map. Per-character: win-rate trend, damage curve, and that character's best and worst cards by WAR.
 
 **Relics (Phase 6):** a Relics page in a per-relic detail format — pick a relic to see its art, how often I obtained it, my win rate when I did, its WAR, and where it ranks among every relic I've gotten. Relics are auto-taken, so there's no Elo, pick rate, or Skip — just outcome: when I get a relic (at the floor it drops), do I win above my baseline for runs that reached that floor? The same survivorship-corrected, shrunk WAR as cards. Starting relics sit near zero by design.
+
+**Potions (Phase 6):** a Potions page in the same detail format. Potions *are* a real choice and get used, so on top of WAR it shows **Pickup %** (how often I take one when offered), **Use rate** (of the potions I acquire, how often I actually use one — a hoarding check), win rate when picked, and where it ranks. No Elo.
 
 ## The interesting parts
 
@@ -106,7 +108,7 @@ A few design choices worth flagging:
 - [x] **Phase 2 — Overview dashboard.** Streamlit app with the topline numbers, five character tiles, rolling win-rate trend, damage-per-act chart, and a filter sidebar.
 - [x] **Phase 3 — Card rankings board.** Pick%, win%, WAR, Elo, all sortable, sample size shown, shrinkage applied to low-N cards.
 - [x] **Phase 4 — Per-card and per-character detail pages.** WAR by act, Elo over time, Elo-vs-WAR scatter; per-character win-rate trend, damage curve, and best/worst cards.
-- [ ] **Phase 5 — Live refresh + the rest of the game.** Live auto-refresh watcher **done** (sidebar toggle; re-imports + refreshes when a run finishes); Relics page **done** (per-relic WAR, no Elo since relics are auto-taken); potion analytics on the same metric framework still to come.
+- [x] **Phase 5 — Live refresh + the rest of the game.** Live auto-refresh watcher, a Relics page (per-relic WAR), and a Potions page (pickup% / win% / WAR / use-rate) — all done. No Elo on relics/potions (they're auto-taken / a one-shot pick). Polish + stretch features are ongoing.
 
 ## Setup
 
@@ -149,7 +151,8 @@ sts2-stats/
 │   ├── card_rankings.py    Card Rankings board (WAR, Elo, pick%, win%)
 │   ├── card_detail.py      per-card detail (art, by-act, Elo-over-time, scatter)
 │   ├── character_detail.py per-character detail (win rate, damage, best/worst)
-│   └── relics.py           Relics page (per-relic WAR)
+│   ├── relics.py           Relics page (per-relic WAR)
+│   └── potions.py          Potions page (pickup% / use / WAR)
 ├── theme.py             palettes (dark + light) + Altair theme + custom CSS
 ├── import_all.py        one-command CLI import + sanity report
 ├── verify.py            invariant + cross-source checks + tone scan
@@ -163,12 +166,13 @@ sts2-stats/
 │   └── config.toml      Streamlit theme defaults (palette mirrors theme.py)
 ├── sts2_stats/          the data-layer + stats package
 │   ├── paths.py         save-folder auto-detection
-│   ├── parser.py        .run JSON -> normalized records (runs + card / room / relic events)
+│   ├── parser.py        .run JSON -> normalized records (runs + card / room / relic / potion events)
 │   ├── db.py            SQLite schema + sanity report
 │   ├── importer.py      idempotent upsert
 │   ├── queries.py       SQL backend for the Overview dashboard
 │   ├── rankings.py      Phase 3 stats engine (WAR + Elo + pick%/win%)
 │   ├── relics.py        Phase 6 relic WAR engine
+│   ├── potions.py       Phase 6 potion engine (pickup% / use / WAR)
 │   ├── reworks.py       card-rework valid-from filter + version_key helper
 │   └── names.py         card / character display-name prettifier
 └── sts2_stats.sqlite    generated locally; not checked in

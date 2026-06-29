@@ -62,8 +62,9 @@ def parse_run(
     local_steam_id: str | None,
     source_file: str,
     imported_at: str | None = None,
-) -> tuple[dict, list[dict], list[dict], list[dict]]:
-    """Turn one .run JSON object into (run_row, card_events, room_events, relic_events).
+) -> tuple[dict, list[dict], list[dict], list[dict], list[dict]]:
+    """Turn one .run JSON object into
+    (run_row, card_events, room_events, relic_events, potion_events).
 
     Raises RunParseError if required fields are missing or unusable.
     """
@@ -121,7 +122,8 @@ def parse_run(
     card_events = _extract_card_events(run_id, mph, local_idx)
     room_events = _extract_room_events(run_id, mph, local_idx)
     relic_events = _extract_relic_events(run_id, local_player)
-    return run_row, card_events, room_events, relic_events
+    potion_events = _extract_potion_events(run_id, mph, local_idx)
+    return run_row, card_events, room_events, relic_events, potion_events
 
 
 def _extract_card_events(run_id: int, mph: list, local_idx: int) -> list[dict]:
@@ -232,12 +234,62 @@ def _extract_relic_events(run_id: int, local_player: dict) -> list[dict]:
     return rows
 
 
+def _extract_potion_events(run_id: int, mph: list, local_idx: int) -> list[dict]:
+    """One row per potion event for the local user, with the floor it happened on.
+
+    Unlike relics, potions are a real choice and get consumed, so we capture four
+    event types from each map point's player_stats:
+      - 'offered'   one per option in `potion_choices` (carries was_picked) — this
+                    is the pick-vs-skip signal, so pickup% and WAR live here;
+      - 'used'      ids in `potion_used`     (drove the Use stat);
+      - 'bought'    ids in `bought_potions`  (shop acquisitions);
+      - 'discarded' ids in `potion_discarded`.
+    Floor is cumulative across acts, same scheme as card/room events."""
+    rows: list[dict] = []
+    floor_counter = 0
+    for act_index, act in enumerate(mph):
+        if not isinstance(act, list):
+            continue
+        for mp in act:
+            floor_counter += 1
+            if not isinstance(mp, dict):
+                continue
+            pstats_list = mp.get("player_stats") or []
+            if not isinstance(pstats_list, list) or local_idx >= len(pstats_list):
+                continue
+            pstats = pstats_list[local_idx]
+            if not isinstance(pstats, dict):
+                continue
+            for ch in pstats.get("potion_choices") or []:
+                if not isinstance(ch, dict):
+                    continue
+                pid = ch.get("choice")
+                if not pid:
+                    continue
+                rows.append({
+                    "run_id": run_id, "potion_id": pid, "floor": floor_counter,
+                    "act_index": act_index, "event_type": "offered",
+                    "was_picked": 1 if ch.get("was_picked") else 0,
+                })
+            for event_type, key in (("used", "potion_used"),
+                                    ("bought", "bought_potions"),
+                                    ("discarded", "potion_discarded")):
+                for pid in pstats.get(key) or []:
+                    if not pid:
+                        continue
+                    rows.append({
+                        "run_id": run_id, "potion_id": pid, "floor": floor_counter,
+                        "act_index": act_index, "event_type": event_type, "was_picked": 0,
+                    })
+    return rows
+
+
 def parse_file(
     path: Path,
     *,
     local_steam_id: str | None,
     imported_at: str | None = None,
-) -> tuple[dict, list[dict], list[dict], list[dict]]:
+) -> tuple[dict, list[dict], list[dict], list[dict], list[dict]]:
     """Convenience: read + parse a .run file from disk."""
     with Path(path).open("r", encoding="utf-8") as f:
         data = json.load(f)

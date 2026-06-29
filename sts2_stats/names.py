@@ -73,3 +73,12 @@ def pretty_relic_name(relic_id: str | None) -> str:
     if relic_id in overrides:
         return overrides[relic_id]
     return _titleize(_strip_prefix(relic_id)) or relic_id
+
+
+def pretty_potion_name(potion_id: str | None) -> str:
+    if not potion_id:
+        return "—"
+    overrides = _overrides()
+    if potion_id in overrides:
+        return overrides[potion_id]
+    return _titleize(_strip_prefix(potion_id)) or potion_id
