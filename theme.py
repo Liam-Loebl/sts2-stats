@@ -193,6 +193,30 @@ ul[data-baseweb="menu"] li * { color: TEXT !important; }
     )
 
 
+def _dark_widget_css(p: dict) -> str:
+    """Dark-mode widget borders. Streamlit's base="dark" renders the selectbox,
+    its dropdown, and text inputs with no visible border, so they blend into the
+    page — give them the same palette border the cards use."""
+    css = """
+/* Selectbox closed control — visible border (the base="dark" default has none,
+   so 'Sort by' and the other dropdowns blended into the background). */
+.stApp div[data-baseweb="select"] > div { border: 1px solid BORDER !important; }
+
+/* Open dropdown popover — border + surface so it reads as a distinct layer. */
+div[data-baseweb="popover"] ul,
+div[data-baseweb="popover"] div[role="listbox"],
+ul[data-baseweb="menu"] {
+    border: 1px solid BORDER !important;
+    background-color: SURFACE !important;
+}
+
+/* Text / number inputs (e.g. the card / relic search) — matching border. */
+.stApp div[data-baseweb="input"],
+.stApp div[data-baseweb="base-input"] { border: 1px solid BORDER !important; }
+"""
+    return css.replace("BORDER", p["border"]).replace("SURFACE", p["surface"])
+
+
 def get_css(palette: dict, mode: str = "dark") -> str:
     """Render the full CSS block for the given palette + mode.
 
@@ -204,7 +228,7 @@ def get_css(palette: dict, mode: str = "dark") -> str:
     fail WCAG small-text contrast against the white card surface.
     """
     char_label_color = "var(--char-color)" if mode == "dark" else palette["text_primary"]
-    widget_css = "" if mode == "dark" else _light_widget_css(palette)
+    widget_css = _dark_widget_css(palette) if mode == "dark" else _light_widget_css(palette)
     return f"""
 <style>
 @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap');
